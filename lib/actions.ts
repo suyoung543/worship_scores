@@ -167,62 +167,49 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
   let versionId: string;
   let oldPaths: string[] = [];
 
-  if (kind === "original") {
-    const { data: existing, error: findErr } = await supabaseAdmin
+  // 원본은 (곡,키)당 하나, 수정본은 (곡,키,세션)당 하나만 유지합니다.
+  // 기존 레코드가 있으면 그걸 재사용해서 대체하고, DB/스토리지에 예전 버전이 쌓이지 않게 합니다.
+  const session = kind === "original" ? null : member;
+  let existingQuery = supabaseAdmin
+    .from("score_versions")
+    .select("id")
+    .eq("song_id", songId)
+    .eq("key", key)
+    .eq("kind", kind);
+  existingQuery = session ? existingQuery.eq("session", session) : existingQuery.is("session", null);
+  const { data: existing, error: findErr } = await existingQuery.maybeSingle();
+  if (findErr) throw new Error(findErr.message);
+
+  if (existing) {
+    versionId = existing.id;
+
+    const { data: oldPages, error: pagesErr } = await supabaseAdmin
+      .from("score_pages")
+      .select("storage_path")
+      .eq("version_id", versionId);
+    if (pagesErr) throw new Error(pagesErr.message);
+    oldPaths = (oldPages ?? []).map((p) => p.storage_path);
+
+    const { error: delPagesErr } = await supabaseAdmin.from("score_pages").delete().eq("version_id", versionId);
+    if (delPagesErr) throw new Error(delPagesErr.message);
+
+    const { error: updateErr } = await supabaseAdmin
       .from("score_versions")
-      .select("id")
-      .eq("song_id", songId)
-      .eq("key", key)
-      .eq("kind", "original")
-      .maybeSingle();
-    if (findErr) throw new Error(findErr.message);
-
-    if (existing) {
-      versionId = existing.id;
-
-      const { data: oldPages, error: pagesErr } = await supabaseAdmin
-        .from("score_pages")
-        .select("storage_path")
-        .eq("version_id", versionId);
-      if (pagesErr) throw new Error(pagesErr.message);
-      oldPaths = (oldPages ?? []).map((p) => p.storage_path);
-
-      const { error: delPagesErr } = await supabaseAdmin.from("score_pages").delete().eq("version_id", versionId);
-      if (delPagesErr) throw new Error(delPagesErr.message);
-
-      const { error: updateErr } = await supabaseAdmin
-        .from("score_versions")
-        .update({
-          memo: memo || null,
-          created_by: SESSION_LABELS[member],
-          created_at: new Date().toISOString(),
-        })
-        .eq("id", versionId);
-      if (updateErr) throw new Error(updateErr.message);
-    } else {
-      const { data: inserted, error: insertErr } = await supabaseAdmin
-        .from("score_versions")
-        .insert({
-          song_id: songId,
-          key,
-          kind: "original",
-          session: null,
-          memo: memo || null,
-          created_by: SESSION_LABELS[member],
-        })
-        .select("id")
-        .single();
-      if (insertErr) throw new Error(insertErr.message);
-      versionId = inserted.id;
-    }
+      .update({
+        memo: memo || null,
+        created_by: SESSION_LABELS[member],
+        created_at: new Date().toISOString(),
+      })
+      .eq("id", versionId);
+    if (updateErr) throw new Error(updateErr.message);
   } else {
     const { data: inserted, error: insertErr } = await supabaseAdmin
       .from("score_versions")
       .insert({
         song_id: songId,
         key,
-        kind: "revision",
-        session: member,
+        kind,
+        session,
         memo: memo || null,
         created_by: SESSION_LABELS[member],
       })
@@ -250,7 +237,7 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
     })
   );
 
-  // 원본을 재업로드해서 페이지 수가 줄어든 경우에만 남는 예전 이미지가 있어 정리합니다.
+  // 재업로드해서 페이지 수가 줄어든 경우에만 남는 예전 이미지가 있어 정리합니다.
   const orphaned = oldPaths.filter((p) => !newPaths.includes(p));
   if (orphaned.length > 0) {
     try {

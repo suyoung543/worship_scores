@@ -37,6 +37,11 @@ create unique index if not exists score_versions_one_original
   on score_versions (song_id, key)
   where kind = 'original';
 
+-- 곡 + 키 + 세션 조합당 수정본도 하나만 존재 (재업로드 시 예전 버전/이미지를 대체, 중복 누적 방지)
+create unique index if not exists score_versions_one_revision
+  on score_versions (song_id, key, session)
+  where kind = 'revision';
+
 create index if not exists score_versions_song_key_idx
   on score_versions (song_id, key);
 

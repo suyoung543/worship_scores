@@ -102,32 +102,27 @@ export default async function SongDetailPage({ params }: { params: Promise<{ id:
                     <UploadForm songId={song.id} kind="revision" fixedKey={summary.key} />
                   </details>
 
-                  {others.some((m) => summary.revisions[m]) && (
-                    <>
-                      <hr className="divider" style={{ margin: "4px 0" }} />
-                      <div className="stack" style={{ gap: 8 }}>
-                        {others.map((m) => {
-                          const rev = summary.revisions[m];
-                          if (!rev) return null;
-                          return (
-                            <div key={m}>
-                              <div className="between">
-                                <span className="small muted">{SESSION_LABELS[m]} 수정본</span>
-                                <ViewScoreButton
-                                  className="btn btn-secondary"
-                                  title={song.title}
-                                  subtitle={`${summary.key}키 · ${SESSION_LABELS[m]} 수정본`}
-                                  pages={rev.pages}
-                                  pdfHref={`/api/scores/${rev.id}/pdf`}
-                                />
-                              </div>
-                              {rev.memo && <p className="small muted" style={{ margin: 0 }}>메모: {rev.memo}</p>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
+                  <hr className="divider" style={{ margin: "4px 0" }} />
+                  <div className="stack" style={{ gap: 8 }}>
+                    {others.map((m) => {
+                      const rev = summary.revisions[m] ?? null;
+                      return (
+                        <div key={m}>
+                          <div className="between">
+                            <span className="small muted">{SESSION_LABELS[m]} 수정본</span>
+                            <ViewScoreButton
+                              className="btn btn-secondary"
+                              title={song.title}
+                              subtitle={`${summary.key}키 · ${SESSION_LABELS[m]} 수정본`}
+                              pages={rev?.pages ?? []}
+                              pdfHref={rev ? `/api/scores/${rev.id}/pdf` : undefined}
+                            />
+                          </div>
+                          {rev?.memo && <p className="small muted" style={{ margin: 0 }}>메모: {rev.memo}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             );
