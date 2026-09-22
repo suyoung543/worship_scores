@@ -1,7 +1,7 @@
 # Worship Scores
 
 예배팀(인도자·메인건반·드럼)이 콘티 순서, 키, 참고 유튜브 링크, 그리고 각자 수정한 악보를
-한 곳에 모아두고 다시 찾아 쓸 수 있게 만든 아주 단순한 웹 앱입니다.
+한 곳에 모아 두고 다시 찾아 쓸 수 있게 만든 웹 앱입니다.
 
 - 콘티(예배)마다 곡 순서/키/유튜브 링크를 정리
 - 원본 악보와, 세션(인도자/메인건반/드럼)별 수정본을 따로 저장
@@ -9,51 +9,7 @@
 - 업로드 시 PDF/이미지를 A4 세로 페이지로 자동 변환 → 보기/다운로드/콘티 PDF 합치기가 전부 같은 형태
 - 아이패드에서는 바로 보기, 다른 멤버는 PDF를 받아 프린트
 
-## 준비물
-
-1. [Supabase](https://supabase.com) 무료 프로젝트 1개
-2. 이 프로젝트를 올릴 [Vercel](https://vercel.com) 계정 (무료 플랜으로 충분)
-
-둘 다 회원가입만 하면 바로 쓸 수 있고, 본인 소유라 언제든 백업/이전이 가능합니다.
-
-## 1) Supabase 설정
-
-1. [supabase.com](https://supabase.com)에서 새 프로젝트를 만듭니다.
-2. 왼쪽 메뉴 **SQL Editor**를 열고 `supabase/schema.sql` 파일의 내용을 전체 복사해 붙여넣은 뒤 실행합니다.
-   - 테이블(`songs`, `score_versions`, `score_pages`, `services`, `service_items`)과
-     악보 이미지를 저장할 비공개 스토리지 버킷(`scores`)이 만들어집니다.
-3. 왼쪽 메뉴 **Project Settings → API**에서 다음 두 값을 복사해둡니다.
-   - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
-   - `service_role` 비밀 키 (`anon` 키 아님! `service_role`) → `SUPABASE_SERVICE_ROLE_KEY`
-
-> `service_role` 키는 데이터베이스 전체 권한을 가진 키라서 절대 브라우저로 노출되면 안 됩니다.
-> 이 앱은 서버(서버 액션/라우트 핸들러)에서만 이 키를 사용하도록 만들어져 있어서 안전합니다.
-
-## 2) 로컬에서 실행해보기 (선택)
-
-```bash
-npm install
-cp .env.local.example .env.local
-# .env.local을 열어 4개 값을 채워넣기
-npm run dev
-```
-
-`http://localhost:3000` 접속 → 비밀번호 + 내 파트(인도자/메인건반/드럼) 선택하면 끝입니다.
-
-## 3) Vercel에 배포하기
-
-1. 이 폴더를 GitHub 저장소로 올립니다 (Vercel이 GitHub 연동으로 자동 배포해줍니다).
-2. [vercel.com](https://vercel.com) → **Add New → Project** → 방금 만든 저장소를 선택합니다.
-3. **Environment Variables**에 `.env.local.example`에 있는 4개 값을 각각 넣습니다.
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `APP_PASSWORD` — 세션 멤버들에게 공유할 공용 비밀번호
-   - `AUTH_SECRET` — 아무 긴 임의 문자열 (예: `openssl rand -hex 32` 결과)
-4. **Deploy** 클릭. 몇 분 뒤 `https://프로젝트이름.vercel.app` 링크가 생깁니다.
-5. 그 링크를 세션 멤버들에게 공유하고, 각자 접속할 때 비밀번호 + 자기 파트를 선택하면 됩니다.
-   - 아이패드 Safari에서는 공유 버튼 → **홈 화면에 추가**로 앱처럼 쓸 수 있습니다.
-
-배포 후에도 이 저장소에 다시 코드를 올리면(push) Vercel이 자동으로 재배포합니다.
+## Supabase / Vercel을 통해 배포
 
 ## 사용 흐름
 
