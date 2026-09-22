@@ -15,7 +15,7 @@ export default async function LoginPage({
   return (
     <div className="page" style={{ maxWidth: 420, paddingTop: 72 }}>
       <div className="stack" style={{ marginBottom: 32, textAlign: "center" }}>
-        <h1 style={{ fontSize: 28 }}>악보함</h1>
+        <h1 style={{ fontSize: 28 }}>Worship Scores</h1>
         <p className="muted">세션 비밀번호와 내 파트를 선택해주세요.</p>
       </div>
 

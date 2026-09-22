@@ -10,7 +10,7 @@ const notoSansKR = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: "악보함",
+  title: "Worship Scores",
   description: "예배팀 콘티와 악보를 함께 정리하고 저장하는 곳",
 };
 
