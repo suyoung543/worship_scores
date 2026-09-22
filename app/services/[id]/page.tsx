@@ -7,7 +7,7 @@ import AddServiceItemForm from "@/components/AddServiceItemForm";
 import { getScoreSummary, getService, listServiceItems, listSongs, type VersionWithPages } from "@/lib/db";
 import { getSessionMember, SESSION_LABELS, SESSION_MEMBERS } from "@/lib/auth";
 import { formatServiceDate } from "@/lib/format";
-import { deleteServiceAction, moveServiceItemAction, removeServiceItemAction } from "@/lib/actions";
+import { deleteServiceAction, moveServiceItemAction, removeServiceItemAction, updateServiceAction } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -66,6 +66,26 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
             </ConfirmSubmitButton>
           </form>
         </div>
+
+        <details style={{ marginBottom: 16 }}>
+          <summary className="small" style={{ cursor: "pointer", color: "var(--ink-soft)" }}>
+            날짜/제목 수정
+          </summary>
+          <form action={updateServiceAction} className="stack card" style={{ marginTop: 10 }}>
+            <input type="hidden" name="serviceId" value={service.id} />
+            <div className="field">
+              <label htmlFor="serviceDate">날짜</label>
+              <input id="serviceDate" name="serviceDate" type="date" defaultValue={service.service_date} required />
+            </div>
+            <div className="field">
+              <label htmlFor="title">제목 (선택)</label>
+              <input id="title" name="title" type="text" defaultValue={service.title ?? ""} placeholder="예: 주일 2부 예배" />
+            </div>
+            <button type="submit" className="btn btn-secondary" style={{ alignSelf: "flex-start" }}>
+              저장
+            </button>
+          </form>
+        </details>
 
         <div className="stack" style={{ marginBottom: 20, gap: 10 }}>
           <div className="row">

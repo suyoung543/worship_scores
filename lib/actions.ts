@@ -19,6 +19,7 @@ import {
   deleteService,
   moveServiceItem,
   removeServiceItem,
+  updateService,
   updateSong,
 } from "@/lib/db";
 import { SCORES_BUCKET, supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -68,6 +69,17 @@ export async function createServiceAction(formData: FormData): Promise<void> {
   const id = await createService({ serviceDate, title: title || null });
   revalidatePath("/services");
   redirect(`/services/${id}`);
+}
+
+export async function updateServiceAction(formData: FormData): Promise<void> {
+  await requireMember();
+  const id = String(formData.get("serviceId") ?? "");
+  const serviceDate = String(formData.get("serviceDate") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  if (!serviceDate) throw new Error("날짜를 입력해주세요.");
+  await updateService(id, { serviceDate, title: title || null });
+  revalidatePath(`/services/${id}`);
+  revalidatePath("/services");
 }
 
 export async function deleteServiceAction(formData: FormData): Promise<void> {

@@ -152,6 +152,14 @@ export async function createService(input: { serviceDate: string; title: string 
   return data.id;
 }
 
+export async function updateService(id: string, input: { serviceDate: string; title: string | null }): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("services")
+    .update({ service_date: input.serviceDate, title: input.title })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 export async function deleteService(id: string): Promise<void> {
   const { error } = await supabaseAdmin.from("services").delete().eq("id", id);
   if (error) throw new Error(error.message);
