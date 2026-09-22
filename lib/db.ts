@@ -53,30 +53,56 @@ export interface ServiceItem {
   song: Song;
 }
 
-async function attachSignedUrls(pages: ScorePageRow[]): Promise<VersionWithPages["pages"]> {
-  if (pages.length === 0) return [];
-  const sorted = [...pages].sort((a, b) => a.page_no - b.page_no);
-  const paths = sorted.map((p) => p.storage_path);
-  const { data, error } = await supabaseAdmin.storage
-    .from(SCORES_BUCKET)
-    .createSignedUrls(paths, SIGNED_URL_TTL);
-  if (error || !data) {
-    throw new Error(`악보 이미지 URL을 만들지 못했습니다: ${error?.message ?? "알 수 없는 오류"}`);
-  }
-  return sorted.map((p, i) => ({
-    page_no: p.page_no,
-    path: p.storage_path,
-    url: data[i]?.signedUrl ?? "",
-  }));
+async function withPages(version: ScoreVersionRow): Promise<VersionWithPages> {
+  const map = await withPagesBatch([version]);
+  return map.get(version.id)!;
 }
 
-async function withPages(version: ScoreVersionRow): Promise<VersionWithPages> {
+/**
+ * 여러 버전의 페이지를 한 번의 DB 조회 + 한 번의 signed URL 발급으로 모아서 가져옵니다.
+ * 버전마다 따로 왕복하면 버전 수만큼 느려지므로, 곡 상세/콘티 상세처럼 여러 버전을
+ * 한 화면에 보여줄 때는 반드시 이 배치 버전을 사용하세요.
+ */
+async function withPagesBatch(versions: ScoreVersionRow[]): Promise<Map<string, VersionWithPages>> {
+  const result = new Map<string, VersionWithPages>();
+  if (versions.length === 0) return result;
+
+  const versionIds = versions.map((v) => v.id);
   const { data: pages, error } = await supabaseAdmin
     .from("score_pages")
     .select("id, version_id, page_no, storage_path")
-    .eq("version_id", version.id);
+    .in("version_id", versionIds);
   if (error) throw new Error(error.message);
-  return { ...version, pages: await attachSignedUrls(pages ?? []) };
+
+  const pagesByVersion = new Map<string, ScorePageRow[]>();
+  for (const p of pages ?? []) {
+    const list = pagesByVersion.get(p.version_id) ?? [];
+    list.push(p);
+    pagesByVersion.set(p.version_id, list);
+  }
+
+  const allPaths = (pages ?? []).map((p) => p.storage_path);
+  const urlByPath = new Map<string, string>();
+  if (allPaths.length > 0) {
+    const { data: signed, error: signedErr } = await supabaseAdmin.storage
+      .from(SCORES_BUCKET)
+      .createSignedUrls(allPaths, SIGNED_URL_TTL);
+    if (signedErr || !signed) {
+      throw new Error(`악보 이미지 URL을 만들지 못했습니다: ${signedErr?.message ?? "알 수 없는 오류"}`);
+    }
+    signed.forEach((s, i) => {
+      if (s.signedUrl) urlByPath.set(allPaths[i], s.signedUrl);
+    });
+  }
+
+  for (const version of versions) {
+    const sorted = (pagesByVersion.get(version.id) ?? []).sort((a, b) => a.page_no - b.page_no);
+    result.set(version.id, {
+      ...version,
+      pages: sorted.map((p) => ({ page_no: p.page_no, path: p.storage_path, url: urlByPath.get(p.storage_path) ?? "" })),
+    });
+  }
+  return result;
 }
 
 // ---------- 예배(콘티) ----------
@@ -353,16 +379,25 @@ export async function getScoreSummary(songId: string, key: string): Promise<Scor
 
   const rows = (data ?? []) as ScoreVersionRow[];
   const originalRow = rows.find((r) => r.kind === "original") ?? null;
-  const revisions: Partial<Record<SessionMember, VersionWithPages>> = {};
+  const latestRevisionRows = new Map<SessionMember, ScoreVersionRow>();
   for (const r of rows) {
     if (r.kind !== "revision" || !r.session) continue;
-    if (revisions[r.session]) continue; // 이미 더 최신 버전을 찾았으므로 건너뜀 (내림차순 정렬)
-    revisions[r.session] = await withPages(r);
+    if (latestRevisionRows.has(r.session)) continue; // 이미 더 최신 버전을 찾았으므로 건너뜀 (내림차순 정렬)
+    latestRevisionRows.set(r.session, r);
+  }
+
+  // 버전마다 따로 왕복하면 느려지므로 원본 + 모든 세션 수정본을 한 번에 배치 조회합니다.
+  const relevantVersions = originalRow ? [originalRow, ...latestRevisionRows.values()] : [...latestRevisionRows.values()];
+  const versionsById = await withPagesBatch(relevantVersions);
+
+  const revisions: Partial<Record<SessionMember, VersionWithPages>> = {};
+  for (const [session, row] of latestRevisionRows) {
+    revisions[session] = versionsById.get(row.id);
   }
 
   return {
     key,
-    original: originalRow ? await withPages(originalRow) : null,
+    original: originalRow ? versionsById.get(originalRow.id) ?? null : null,
     revisions,
   };
 }

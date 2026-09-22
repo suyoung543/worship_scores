@@ -6,10 +6,16 @@ import type { SessionMember } from "@/lib/auth";
 
 export type ServicePdfMode = "original" | SessionMember;
 
-// 업로드 시 모든 페이지를 A4 비율(210×297mm)의 JPEG로 맞춰 저장하므로,
-// PDF로 합칠 때는 각 이미지를 그대로 한 페이지 전체에 채우면 됩니다.
+// 업로드 시 모든 페이지를 A4 비율(210×297mm)의 JPEG로 맞춰 저장합니다.
+// PDF로 합칠 때는 원본 크기 그대로 채우면 화면/인쇄에서 너무 꽉 차 보이므로
+// IMAGE_SCALE만큼 축소해 페이지 가운데에 여백을 두고 배치합니다.
 const A4_WIDTH_PT = 595.28;
 const A4_HEIGHT_PT = 841.89;
+const IMAGE_SCALE = 0.88;
+const IMAGE_WIDTH_PT = A4_WIDTH_PT * IMAGE_SCALE;
+const IMAGE_HEIGHT_PT = A4_HEIGHT_PT * IMAGE_SCALE;
+const IMAGE_X_PT = (A4_WIDTH_PT - IMAGE_WIDTH_PT) / 2;
+const IMAGE_Y_PT = (A4_HEIGHT_PT - IMAGE_HEIGHT_PT) / 2;
 
 async function downloadImageBytes(path: string): Promise<Uint8Array> {
   const { data, error } = await supabaseAdmin.storage.from(SCORES_BUCKET).download(path);
@@ -25,7 +31,7 @@ async function buildPdfFromStoragePaths(paths: string[]): Promise<Uint8Array> {
     const bytes = await downloadImageBytes(path);
     const image = await pdfDoc.embedJpg(bytes);
     const page = pdfDoc.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
-    page.drawImage(image, { x: 0, y: 0, width: A4_WIDTH_PT, height: A4_HEIGHT_PT });
+    page.drawImage(image, { x: IMAGE_X_PT, y: IMAGE_Y_PT, width: IMAGE_WIDTH_PT, height: IMAGE_HEIGHT_PT });
   }
   return pdfDoc.save();
 }

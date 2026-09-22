@@ -234,18 +234,21 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
 
   const newPaths = pages.map((_, i) => `${songId}/${versionId}/${i + 1}.jpg`);
 
-  for (let i = 0; i < pages.length; i++) {
-    const bytes = new Uint8Array(await pages[i].arrayBuffer());
-    const { error: uploadErr } = await supabaseAdmin.storage
-      .from(SCORES_BUCKET)
-      .upload(newPaths[i], bytes, { contentType: "image/jpeg", upsert: true });
-    if (uploadErr) throw new Error(`이미지 업로드 실패: ${uploadErr.message}`);
+  // 페이지별로 순서대로 업로드하면 페이지 수만큼 왕복이 누적되어 느려지므로 병렬로 처리합니다.
+  await Promise.all(
+    pages.map(async (page, i) => {
+      const bytes = new Uint8Array(await page.arrayBuffer());
+      const { error: uploadErr } = await supabaseAdmin.storage
+        .from(SCORES_BUCKET)
+        .upload(newPaths[i], bytes, { contentType: "image/jpeg", upsert: true });
+      if (uploadErr) throw new Error(`이미지 업로드 실패: ${uploadErr.message}`);
 
-    const { error: pageInsertErr } = await supabaseAdmin
-      .from("score_pages")
-      .insert({ version_id: versionId, page_no: i + 1, storage_path: newPaths[i] });
-    if (pageInsertErr) throw new Error(pageInsertErr.message);
-  }
+      const { error: pageInsertErr } = await supabaseAdmin
+        .from("score_pages")
+        .insert({ version_id: versionId, page_no: i + 1, storage_path: newPaths[i] });
+      if (pageInsertErr) throw new Error(pageInsertErr.message);
+    })
+  );
 
   // 원본을 재업로드해서 페이지 수가 줄어든 경우에만 남는 예전 이미지가 있어 정리합니다.
   const orphaned = oldPaths.filter((p) => !newPaths.includes(p));
@@ -258,5 +261,7 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
   }
 
   revalidatePath(`/songs/${songId}`);
+  revalidatePath("/songs");
+  revalidatePath("/songs/gallery");
   revalidatePath("/services");
 }

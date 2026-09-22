@@ -4,12 +4,13 @@ import NavBar from "@/components/NavBar";
 import ViewScoreButton from "@/components/ViewScoreButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import AddServiceItemForm from "@/components/AddServiceItemForm";
-import { getEffectiveVersion, getService, listServiceItems, listSongs, type VersionWithPages } from "@/lib/db";
+import { getScoreSummary, getService, listServiceItems, listSongs, type VersionWithPages } from "@/lib/db";
 import { getSessionMember, SESSION_LABELS, SESSION_MEMBERS } from "@/lib/auth";
 import { formatServiceDate } from "@/lib/format";
 import { deleteServiceAction, moveServiceItemAction, removeServiceItemAction } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 function versionLabel(version: VersionWithPages | null): { text: string; mine: boolean } {
   if (!version) return { text: "악보 없음", mine: false };
@@ -29,10 +30,24 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
   if (!service || !member) notFound();
 
   const itemsWithVersion = await Promise.all(
-    items.map(async (item) => ({
-      item,
-      version: await getEffectiveVersion(item.song_id, item.key, member),
-    }))
+    items.map(async (item) => {
+      const summary = await getScoreSummary(item.song_id, item.key);
+      const version = summary.revisions[member] ?? summary.original ?? null;
+
+      const slots: { key: string; label: string; version: VersionWithPages | null }[] = [
+        { key: "original", label: "원본", version: summary.original ?? null },
+        ...SESSION_MEMBERS.map((m) => ({
+          key: m,
+          label: `${SESSION_LABELS[m]} 수정본`,
+          version: summary.revisions[m] ?? null,
+        })),
+      ];
+      // 이미 위에서 "보기" 버튼으로 보여준 것과 정확히 같은 파일만 중복이니 제외하고,
+      // 나머지는 악보가 없어도("악보 없음") 그대로 보여줍니다.
+      const otherVersions = slots.filter((s) => s.version === null || s.version.id !== version?.id);
+
+      return { item, version, otherVersions };
+    })
   );
 
   return (
@@ -77,7 +92,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
           </div>
         ) : (
           <div className="card" style={{ marginBottom: 24, padding: "4px 18px" }}>
-            {itemsWithVersion.map(({ item, version }, i) => {
+            {itemsWithVersion.map(({ item, version, otherVersions }, i) => {
               const label = versionLabel(version);
               const thumb = version?.pages[0]?.url;
               return (
@@ -113,6 +128,23 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
                       pdfHref={version ? `/api/scores/${version.id}/pdf` : undefined}
                     />
                   </div>
+
+                  {otherVersions.length > 0 && (
+                    <div className="item-actions" style={{ gridColumn: "1 / -1", flexWrap: "wrap" }}>
+                      {otherVersions.map((ov) => (
+                        <div key={ov.key} className="row" style={{ gap: 6 }}>
+                          <span className="small muted">{ov.label}</span>
+                          <ViewScoreButton
+                            className="btn btn-secondary btn-sm"
+                            title={item.song.title}
+                            subtitle={`${item.key}키 · ${ov.label}`}
+                            pages={ov.version?.pages ?? []}
+                            pdfHref={ov.version ? `/api/scores/${ov.version.id}/pdf` : undefined}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="item-actions" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
                     <form action={moveServiceItemAction}>

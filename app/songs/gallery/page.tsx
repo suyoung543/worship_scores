@@ -3,6 +3,7 @@ import NavBar from "@/components/NavBar";
 import { listSongsForGallery } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export default async function SongsGalleryPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;

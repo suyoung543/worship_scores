@@ -7,6 +7,7 @@ import { getSessionMember, SESSION_LABELS, SESSION_MEMBERS } from "@/lib/auth";
 import { updateSongAction } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export default async function SongDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -93,6 +94,7 @@ export default async function SongDetailPage({ params }: { params: Promise<{ id:
                       pdfHref={myRevision ? `/api/scores/${myRevision.id}/pdf` : undefined}
                     />
                   </div>
+                  {myRevision?.memo && <p className="small muted" style={{ margin: 0 }}>메모: {myRevision.memo}</p>}
                   <details>
                     <summary className="small" style={{ cursor: "pointer", color: "var(--ink-soft)" }}>
                       {myRevision ? "내 수정본 다시 올리기" : "내 수정본 올리기"}
@@ -108,15 +110,18 @@ export default async function SongDetailPage({ params }: { params: Promise<{ id:
                           const rev = summary.revisions[m];
                           if (!rev) return null;
                           return (
-                            <div className="between" key={m}>
-                              <span className="small muted">{SESSION_LABELS[m]} 수정본</span>
-                              <ViewScoreButton
-                                className="btn btn-secondary"
-                                title={song.title}
-                                subtitle={`${summary.key}키 · ${SESSION_LABELS[m]} 수정본`}
-                                pages={rev.pages}
-                                pdfHref={`/api/scores/${rev.id}/pdf`}
-                              />
+                            <div key={m}>
+                              <div className="between">
+                                <span className="small muted">{SESSION_LABELS[m]} 수정본</span>
+                                <ViewScoreButton
+                                  className="btn btn-secondary"
+                                  title={song.title}
+                                  subtitle={`${summary.key}키 · ${SESSION_LABELS[m]} 수정본`}
+                                  pages={rev.pages}
+                                  pdfHref={`/api/scores/${rev.id}/pdf`}
+                                />
+                              </div>
+                              {rev.memo && <p className="small muted" style={{ margin: 0 }}>메모: {rev.memo}</p>}
                             </div>
                           );
                         })}

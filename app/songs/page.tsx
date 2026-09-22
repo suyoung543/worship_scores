@@ -4,6 +4,7 @@ import { listSongsWithScoreInfo } from "@/lib/db";
 import { createSongAction } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export default async function SongsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
