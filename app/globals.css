@@ -534,3 +534,103 @@ hr.divider {
   border-top: 1px solid var(--line);
   margin: 20px 0;
 }
+
+/* ---------- 사용 안내 (도움말 버튼 + 시트) ---------- */
+
+.help-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 40;
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 16px;
+  font-weight: 600;
+  opacity: 0.7;
+  box-shadow: 0 2px 8px rgba(31, 42, 68, 0.12);
+}
+
+.help-fab:hover,
+.help-fab:focus-visible {
+  opacity: 1;
+}
+
+.help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(31, 42, 68, 0.4);
+}
+
+.help-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 720px;
+  max-height: 82vh;
+  background: var(--bg);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 24px rgba(31, 42, 68, 0.2);
+}
+
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.help-scroll {
+  overflow-y: auto;
+  padding: 14px 20px calc(24px + env(safe-area-inset-bottom));
+}
+
+.help-section {
+  border-top: 1px solid var(--line);
+  padding: 4px 0;
+}
+
+.help-section summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.help-content {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
+.help-content p,
+.help-content ul {
+  margin: 0 0 10px;
+}
+
+.help-content ul {
+  padding-left: 18px;
+}
+
+.help-content h3 {
+  margin: 16px 0 6px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.help-content code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  font-size: 13px;
+}
