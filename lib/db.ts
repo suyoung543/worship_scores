@@ -1,6 +1,7 @@
 import "server-only";
 import { supabaseAdmin, SCORES_BUCKET } from "@/lib/supabaseAdmin";
 import type { SessionMember } from "@/lib/auth";
+import { normalizeKey } from "@/lib/format";
 
 const SIGNED_URL_TTL = 60 * 60; // 1시간
 
@@ -292,9 +293,10 @@ export async function listSongsWithScoreInfo(query?: string): Promise<SongWithSc
       keyMap = new Map();
       keysBySong.set(row.song_id, keyMap);
     }
-    const existing = keyMap.get(row.key) ?? { key: row.key, hasRevision: false };
+    const key = normalizeKey(row.key);
+    const existing = keyMap.get(key) ?? { key, hasRevision: false };
     if (row.kind === "revision") existing.hasRevision = true;
-    keyMap.set(row.key, existing);
+    keyMap.set(key, existing);
   }
 
   return songs.map((song) => ({
@@ -307,7 +309,7 @@ export interface SongGalleryItem extends Song {
   thumbnailUrl: string | null;
 }
 
-/** 곡 목록 + 각 곡의 대표 원본 악보(가장 앞 키) 첫 페이지 썸네일. 갤러리 뷰용. */
+/** 곡 목록 + 각 곡의 대표 악보(원본 우선, 없으면 수정본) 첫 페이지 썸네일. 갤러리 뷰용. */
 export async function listSongsForGallery(query?: string): Promise<SongGalleryItem[]> {
   const songs = await listSongs(query);
   if (songs.length === 0) return [];
@@ -315,15 +317,15 @@ export async function listSongsForGallery(query?: string): Promise<SongGalleryIt
   const songIds = songs.map((s) => s.id);
   const { data: versions, error: versionsErr } = await supabaseAdmin
     .from("score_versions")
-    .select("id, song_id, key")
+    .select("id, song_id, key, kind")
     .in("song_id", songIds)
-    .eq("kind", "original")
     .order("key");
   if (versionsErr) throw new Error(versionsErr.message);
 
-  const versionBySong = new Map<string, { id: string }>();
+  const versionBySong = new Map<string, { id: string; kind: ScoreVersionKind }>();
   for (const v of versions ?? []) {
-    if (!versionBySong.has(v.song_id)) versionBySong.set(v.song_id, v);
+    const current = versionBySong.get(v.song_id);
+    if (!current || (current.kind === "revision" && v.kind === "original")) versionBySong.set(v.song_id, v);
   }
   const versionIds = Array.from(versionBySong.values()).map((v) => v.id);
 
@@ -357,16 +359,15 @@ export async function listSongsForGallery(query?: string): Promise<SongGalleryIt
   });
 }
 
-/** 이 곡에 악보가 하나라도 있는 키 목록 (원본 기준). */
+/** 이 곡에 악보(원본이든 수정본이든)가 하나라도 있는 키 목록. */
 export async function listKeysForSong(songId: string): Promise<string[]> {
   const { data, error } = await supabaseAdmin
     .from("score_versions")
     .select("key")
     .eq("song_id", songId)
-    .eq("kind", "original")
     .order("key");
   if (error) throw new Error(error.message);
-  return Array.from(new Set((data ?? []).map((r) => r.key)));
+  return Array.from(new Set((data ?? []).map((r) => normalizeKey(r.key))));
 }
 
 export interface ScoreSummary {
@@ -381,11 +382,12 @@ export async function getScoreSummary(songId: string, key: string): Promise<Scor
     .from("score_versions")
     .select("id, song_id, key, kind, session, memo, created_by, created_at")
     .eq("song_id", songId)
-    .eq("key", key)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
 
-  const rows = (data ?? []) as ScoreVersionRow[];
+  // 키는 직접 입력하는 값이라 "d"/"D"/"D " 처럼 표기가 달라질 수 있어, DB 정확 일치 대신 정규화해서 비교합니다.
+  const wantedKey = normalizeKey(key);
+  const rows = ((data ?? []) as ScoreVersionRow[]).filter((r) => normalizeKey(r.key) === wantedKey);
   const originalRow = rows.find((r) => r.kind === "original") ?? null;
   const latestRevisionRows = new Map<SessionMember, ScoreVersionRow>();
   for (const r of rows) {
@@ -398,14 +400,21 @@ export async function getScoreSummary(songId: string, key: string): Promise<Scor
   const relevantVersions = originalRow ? [originalRow, ...latestRevisionRows.values()] : [...latestRevisionRows.values()];
   const versionsById = await withPagesBatch(relevantVersions);
 
+  // 업로드가 중간에 실패해 페이지가 하나도 없는 버전은 "악보 있음"으로 취급하지 않습니다.
+  const usable = (id: string) => {
+    const v = versionsById.get(id);
+    return v && v.pages.length > 0 ? v : null;
+  };
+
   const revisions: Partial<Record<SessionMember, VersionWithPages>> = {};
   for (const [session, row] of latestRevisionRows) {
-    revisions[session] = versionsById.get(row.id);
+    const v = usable(row.id);
+    if (v) revisions[session] = v;
   }
 
   return {
-    key,
-    original: originalRow ? versionsById.get(originalRow.id) ?? null : null,
+    key: wantedKey,
+    original: originalRow ? usable(originalRow.id) : null,
     revisions,
   };
 }

@@ -1,5 +1,11 @@
 const WEEKDAY_FMT = new Intl.DateTimeFormat("ko-KR", { weekday: "short", timeZone: "UTC" });
 
+/** 키 표기 흔들림(공백, 유니코드 ♭/♯, 첫 글자 소문자)을 통일합니다. 콘티의 키와 악보의 키가 사소한 표기 차이로 어긋나지 않게 하기 위함. */
+export function normalizeKey(key: string): string {
+  const cleaned = key.normalize("NFKC").replace(/\s+/g, "").replace(/♭/g, "b").replace(/♯/g, "#");
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
 /** "2026-09-27" 같은 date 문자열을 "2026년 9월 27일 (일)" 형태로. 시간대 영향을 받지 않도록 UTC로 고정해 포맷합니다. */
 export function formatServiceDate(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);

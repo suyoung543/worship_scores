@@ -17,6 +17,7 @@ export default function AddServiceItemForm({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [scoreFiles, setScoreFiles] = useState<File[]>([]);
+  const [scoreKind, setScoreKind] = useState<"original" | "revision">("original");
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
@@ -34,6 +35,7 @@ export default function AddServiceItemForm({
       return;
     }
 
+    let itemAdded = false;
     try {
       let pages: Blob[] = [];
       if (scoreFiles.length > 0) {
@@ -44,12 +46,13 @@ export default function AddServiceItemForm({
 
       setStatus("saving");
       const { songId } = await addServiceItemAction(formData);
+      itemAdded = true;
 
       if (pages.length > 0) {
         const uploadData = new FormData();
         uploadData.set("songId", songId);
         uploadData.set("key", key);
-        uploadData.set("kind", "original");
+        uploadData.set("kind", scoreKind);
         uploadData.set("memo", "");
         pages.forEach((blob, i) => uploadData.append("pages", blob, `page-${i + 1}.jpg`));
         await uploadScoreVersionAction(uploadData);
@@ -57,11 +60,22 @@ export default function AddServiceItemForm({
 
       formRef.current?.reset();
       setScoreFiles([]);
+      setScoreKind("original");
       setStatus("idle");
       router.refresh();
     } catch (err) {
       setStatus("error");
-      setErrorMsg(err instanceof Error ? err.message : "저장 중 문제가 생겼어요.");
+      const reason = err instanceof Error ? err.message : "문제가 생겼어요.";
+      if (itemAdded) {
+        // 곡은 이미 콘티에 들어갔으므로 다시 제출하면 중복 추가됩니다. 폼을 비우고 곡 페이지에서 올리도록 안내합니다.
+        formRef.current?.reset();
+        setScoreFiles([]);
+        setScoreKind("original");
+        router.refresh();
+        setErrorMsg(`곡은 콘티에 추가됐지만 악보 업로드에 실패했어요 (${reason}). 곡 페이지에서 악보를 다시 올려주세요.`);
+      } else {
+        setErrorMsg(reason);
+      }
     }
   }
 
@@ -111,7 +125,15 @@ export default function AddServiceItemForm({
       </div>
 
       <div className="field">
-        <label htmlFor="scoreFiles">원본 악보 (선택, PDF 또는 이미지, 여러 장 가능)</label>
+        <label htmlFor="scoreKind">악보 종류 (악보를 함께 올릴 때)</label>
+        <select id="scoreKind" value={scoreKind} onChange={(e) => setScoreKind(e.target.value as "original" | "revision")}>
+          <option value="original">원본</option>
+          <option value="revision">내 수정본 (원본 없이 먼저 올리기)</option>
+        </select>
+      </div>
+
+      <div className="field">
+        <label htmlFor="scoreFiles">악보 (선택, PDF 또는 이미지, 여러 장 가능)</label>
         <input
           id="scoreFiles"
           type="file"

@@ -22,6 +22,7 @@ import {
   updateService,
   updateSong,
 } from "@/lib/db";
+import { normalizeKey } from "@/lib/format";
 import { SCORES_BUCKET, supabaseAdmin } from "@/lib/supabaseAdmin";
 
 async function requireMember(): Promise<SessionMember> {
@@ -97,7 +98,7 @@ export async function addServiceItemAction(formData: FormData): Promise<{ songId
   const newSongTitle = String(formData.get("newSongTitle") ?? "").trim();
   const youtubeUrl = String(formData.get("youtubeUrl") ?? "").trim();
   const youtubeLabel = String(formData.get("youtubeLabel") ?? "").trim();
-  const key = String(formData.get("key") ?? "").trim();
+  const key = normalizeKey(String(formData.get("key") ?? ""));
   const memo = String(formData.get("memo") ?? "").trim();
 
   if (!key) throw new Error("키를 입력해주세요.");
@@ -165,7 +166,7 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
   const member = await requireMember();
 
   const songId = String(formData.get("songId") ?? "");
-  const key = String(formData.get("key") ?? "").trim();
+  const key = normalizeKey(String(formData.get("key") ?? ""));
   const kind = String(formData.get("kind") ?? "");
   const memo = String(formData.get("memo") ?? "").trim();
   const pages = formData
@@ -176,87 +177,92 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
   if (pages.length === 0) throw new Error("업로드할 페이지 이미지가 없습니다.");
   if (kind !== "original" && kind !== "revision") throw new Error("잘못된 요청입니다.");
 
-  let versionId: string;
-  let oldPaths: string[] = [];
-
   // 원본은 (곡,키)당 하나, 수정본은 (곡,키,세션)당 하나만 유지합니다.
   // 기존 레코드가 있으면 그걸 재사용해서 대체하고, DB/스토리지에 예전 버전이 쌓이지 않게 합니다.
+  // 예전에 "d" 처럼 표기가 다르게 저장된 키도 같은 키로 보도록 정규화해서 비교합니다.
   const session = kind === "original" ? null : member;
-  let existingQuery = supabaseAdmin
+  const { data: candidates, error: findErr } = await supabaseAdmin
     .from("score_versions")
-    .select("id")
+    .select("id, key, session")
     .eq("song_id", songId)
-    .eq("key", key)
     .eq("kind", kind);
-  existingQuery = session ? existingQuery.eq("session", session) : existingQuery.is("session", null);
-  const { data: existing, error: findErr } = await existingQuery.maybeSingle();
   if (findErr) throw new Error(findErr.message);
+  const existing = (candidates ?? []).find((v) => normalizeKey(v.key) === key && (v.session ?? null) === session);
 
+  let versionId: string;
+  let created = false;
   if (existing) {
     versionId = existing.id;
-
-    const { data: oldPages, error: pagesErr } = await supabaseAdmin
-      .from("score_pages")
-      .select("storage_path")
-      .eq("version_id", versionId);
-    if (pagesErr) throw new Error(pagesErr.message);
-    oldPaths = (oldPages ?? []).map((p) => p.storage_path);
-
-    const { error: delPagesErr } = await supabaseAdmin.from("score_pages").delete().eq("version_id", versionId);
-    if (delPagesErr) throw new Error(delPagesErr.message);
-
-    const { error: updateErr } = await supabaseAdmin
-      .from("score_versions")
-      .update({
-        memo: memo || null,
-        created_by: SESSION_LABELS[member],
-        created_at: new Date().toISOString(),
-      })
-      .eq("id", versionId);
-    if (updateErr) throw new Error(updateErr.message);
   } else {
     const { data: inserted, error: insertErr } = await supabaseAdmin
       .from("score_versions")
-      .insert({
-        song_id: songId,
-        key,
-        kind,
-        session,
-        memo: memo || null,
-        created_by: SESSION_LABELS[member],
-      })
+      .insert({ song_id: songId, key, kind, session, memo: memo || null, created_by: SESSION_LABELS[member] })
       .select("id")
       .single();
     if (insertErr) throw new Error(insertErr.message);
     versionId = inserted.id;
+    created = true;
   }
 
-  const newPaths = pages.map((_, i) => `${songId}/${versionId}/${i + 1}.jpg`);
+  // 새 이미지는 예전 파일과 겹치지 않는 경로로 먼저 올립니다.
+  // 업로드가 실패해도 기존 악보는 그대로 남고, 성공한 뒤에만 교체됩니다.
+  const stamp = Date.now().toString(36);
+  const newPaths = pages.map((_, i) => `${songId}/${versionId}/${stamp}-${i + 1}.jpg`);
 
-  // 페이지별로 순서대로 업로드하면 페이지 수만큼 왕복이 누적되어 느려지므로 병렬로 처리합니다.
-  await Promise.all(
-    pages.map(async (page, i) => {
-      const bytes = new Uint8Array(await page.arrayBuffer());
-      const { error: uploadErr } = await supabaseAdmin.storage
-        .from(SCORES_BUCKET)
-        .upload(newPaths[i], bytes, { contentType: "image/jpeg", upsert: true });
-      if (uploadErr) throw new Error(`이미지 업로드 실패: ${uploadErr.message}`);
+  try {
+    // 페이지별로 순서대로 업로드하면 페이지 수만큼 왕복이 누적되어 느려지므로 병렬로 처리합니다.
+    await Promise.all(
+      pages.map(async (page, i) => {
+        const bytes = new Uint8Array(await page.arrayBuffer());
+        const { error: uploadErr } = await supabaseAdmin.storage
+          .from(SCORES_BUCKET)
+          .upload(newPaths[i], bytes, { contentType: "image/jpeg", upsert: true });
+        if (uploadErr) throw new Error(`이미지 업로드 실패: ${uploadErr.message}`);
+      })
+    );
 
-      const { error: pageInsertErr } = await supabaseAdmin
+    let oldPaths: string[] = [];
+    if (existing) {
+      const { data: oldPages, error: pagesErr } = await supabaseAdmin
         .from("score_pages")
-        .insert({ version_id: versionId, page_no: i + 1, storage_path: newPaths[i] });
-      if (pageInsertErr) throw new Error(pageInsertErr.message);
-    })
-  );
+        .select("storage_path")
+        .eq("version_id", versionId);
+      if (pagesErr) throw new Error(pagesErr.message);
+      oldPaths = (oldPages ?? []).map((p) => p.storage_path);
 
-  // 재업로드해서 페이지 수가 줄어든 경우에만 남는 예전 이미지가 있어 정리합니다.
-  const orphaned = oldPaths.filter((p) => !newPaths.includes(p));
-  if (orphaned.length > 0) {
-    try {
-      await supabaseAdmin.storage.from(SCORES_BUCKET).remove(orphaned);
-    } catch {
-      // 정리 실패는 무시합니다 (다음 재업로드 때 다시 정리 시도됨).
+      const { error: delPagesErr } = await supabaseAdmin.from("score_pages").delete().eq("version_id", versionId);
+      if (delPagesErr) throw new Error(delPagesErr.message);
     }
+
+    const { error: pagesInsertErr } = await supabaseAdmin
+      .from("score_pages")
+      .insert(newPaths.map((storage_path, i) => ({ version_id: versionId, page_no: i + 1, storage_path })));
+    if (pagesInsertErr) throw new Error(pagesInsertErr.message);
+
+    if (existing) {
+      const { error: updateErr } = await supabaseAdmin
+        .from("score_versions")
+        .update({ key, memo: memo || null, created_by: SESSION_LABELS[member], created_at: new Date().toISOString() })
+        .eq("id", versionId);
+      if (updateErr) throw new Error(updateErr.message);
+    }
+
+    if (oldPaths.length > 0) {
+      try {
+        await supabaseAdmin.storage.from(SCORES_BUCKET).remove(oldPaths);
+      } catch {
+        // 정리 실패는 무시합니다 (고아 파일이 남을 뿐 악보 표시에는 영향 없음).
+      }
+    }
+  } catch (err) {
+    // 페이지가 하나도 없는 빈 버전이 남으면 "악보 없음"으로 보이므로, 방금 만든 버전은 지웁니다.
+    if (created) await supabaseAdmin.from("score_versions").delete().eq("id", versionId);
+    try {
+      await supabaseAdmin.storage.from(SCORES_BUCKET).remove(newPaths);
+    } catch {
+      // 무시
+    }
+    throw err;
   }
 
   revalidatePath(`/songs/${songId}`);

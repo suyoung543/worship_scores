@@ -19,12 +19,14 @@ export default function UploadForm({
   const [files, setFiles] = useState<File[]>([]);
   const [memo, setMemo] = useState("");
   const [keyInput, setKeyInput] = useState("");
+  const [kindChoice, setKindChoice] = useState<"original" | "revision">(kind);
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [isPending, startTransition] = useTransition();
 
   const effectiveKey = fixedKey ?? keyInput.trim();
+  const effectiveKind = fixedKey ? kind : kindChoice;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,7 +49,7 @@ export default function UploadForm({
       const formData = new FormData();
       formData.set("songId", songId);
       formData.set("key", effectiveKey);
-      formData.set("kind", kind);
+      formData.set("kind", effectiveKind);
       formData.set("memo", memo);
       pages.forEach((blob, i) => formData.append("pages", blob, `page-${i + 1}.jpg`));
 
@@ -76,15 +78,24 @@ export default function UploadForm({
   return (
     <form onSubmit={handleSubmit} className="stack" style={{ paddingTop: 12 }}>
       {!fixedKey && (
-        <div className="field">
-          <label>키</label>
-          <input
-            type="text"
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-            placeholder="예: D, Eb, G#m"
-          />
-        </div>
+        <>
+          <div className="field">
+            <label>키</label>
+            <input
+              type="text"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="예: D, Eb, G#m"
+            />
+          </div>
+          <div className="field">
+            <label>어떤 악보인가요?</label>
+            <select value={kindChoice} onChange={(e) => setKindChoice(e.target.value as "original" | "revision")}>
+              <option value="original">원본</option>
+              <option value="revision">내 수정본 (원본 없이 먼저 올리기)</option>
+            </select>
+          </div>
+        </>
       )}
 
       <div className="field">
@@ -97,7 +108,7 @@ export default function UploadForm({
         />
       </div>
 
-      {kind === "revision" && (
+      {effectiveKind === "revision" && (
         <div className="field">
           <label>메모 (선택)</label>
           <input
