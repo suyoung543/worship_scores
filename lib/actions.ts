@@ -169,6 +169,7 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
   const key = normalizeKey(String(formData.get("key") ?? ""));
   const kind = String(formData.get("kind") ?? "");
   const memo = String(formData.get("memo") ?? "").trim();
+  const sessionField = String(formData.get("session") ?? "");
   const pages = formData
     .getAll("pages")
     .filter((p): p is File => typeof p === "object" && p !== null && "arrayBuffer" in p && (p as File).size > 0);
@@ -180,7 +181,8 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
   // 원본은 (곡,키)당 하나, 수정본은 (곡,키,세션)당 하나만 유지합니다.
   // 기존 레코드가 있으면 그걸 재사용해서 대체하고, DB/스토리지에 예전 버전이 쌓이지 않게 합니다.
   // 예전에 "d" 처럼 표기가 다르게 저장된 키도 같은 키로 보도록 정규화해서 비교합니다.
-  const session = kind === "original" ? null : member;
+  if (kind === "revision" && sessionField && !isSessionMember(sessionField)) throw new Error("잘못된 세션입니다.");
+  const session = kind === "original" ? null : isSessionMember(sessionField) ? sessionField : member;
   const { data: candidates, error: findErr } = await supabaseAdmin
     .from("score_versions")
     .select("id, key, session")

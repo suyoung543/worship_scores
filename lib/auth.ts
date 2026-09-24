@@ -1,21 +1,11 @@
 import { cookies } from "next/headers";
+import { isSessionMember, type SessionMember } from "@/lib/sessions";
 
 // 로그인은 Supabase Auth 없이 아주 단순하게 처리합니다:
 // 1) 공용 비밀번호를 맞추고 2) 자신의 세션 역할(인도자/메인건반/드럼)을 고르면
 // 그 역할이 담긴 서명된 쿠키를 내려줍니다. 미들웨어와 서버 액션은 이 쿠키만 확인합니다.
 
-export const SESSION_MEMBERS = ["leader", "keys", "drums"] as const;
-export type SessionMember = (typeof SESSION_MEMBERS)[number];
-
-export const SESSION_LABELS: Record<SessionMember, string> = {
-  leader: "인도자",
-  keys: "메인건반",
-  drums: "드럼",
-};
-
-export function isSessionMember(value: string | null | undefined): value is SessionMember {
-  return !!value && (SESSION_MEMBERS as readonly string[]).includes(value);
-}
+export { SESSION_MEMBERS, SESSION_LABELS, isSessionMember, type SessionMember } from "@/lib/sessions";
 
 const COOKIE_NAME = "bs_session";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 180; // 반 년 정도 유지 (다들 새 툴에 익숙하지 않으므로 자주 로그인시키지 않음)

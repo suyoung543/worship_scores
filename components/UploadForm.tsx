@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { filesToA4Pages } from "@/lib/convert";
 import { uploadScoreVersionAction } from "@/lib/actions";
+import ScoreTypeSelect, { appendScoreType, type ScoreType } from "@/components/ScoreTypeSelect";
 
 type Status = "idle" | "converting" | "uploading" | "done" | "error";
 
@@ -19,14 +20,14 @@ export default function UploadForm({
   const [files, setFiles] = useState<File[]>([]);
   const [memo, setMemo] = useState("");
   const [keyInput, setKeyInput] = useState("");
-  const [kindChoice, setKindChoice] = useState<"original" | "revision">(kind);
+  const [typeChoice, setTypeChoice] = useState<ScoreType>("original");
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [isPending, startTransition] = useTransition();
 
   const effectiveKey = fixedKey ?? keyInput.trim();
-  const effectiveKind = fixedKey ? kind : kindChoice;
+  const effectiveKind = fixedKey ? kind : typeChoice === "original" ? "original" : "revision";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,7 +50,8 @@ export default function UploadForm({
       const formData = new FormData();
       formData.set("songId", songId);
       formData.set("key", effectiveKey);
-      formData.set("kind", effectiveKind);
+      if (fixedKey) formData.set("kind", kind);
+      else appendScoreType(formData, typeChoice);
       formData.set("memo", memo);
       pages.forEach((blob, i) => formData.append("pages", blob, `page-${i + 1}.jpg`));
 
@@ -90,10 +92,7 @@ export default function UploadForm({
           </div>
           <div className="field">
             <label>어떤 악보인가요?</label>
-            <select value={kindChoice} onChange={(e) => setKindChoice(e.target.value as "original" | "revision")}>
-              <option value="original">원본</option>
-              <option value="revision">내 수정본 (원본 없이 먼저 올리기)</option>
-            </select>
+            <ScoreTypeSelect value={typeChoice} onChange={setTypeChoice} />
           </div>
         </>
       )}

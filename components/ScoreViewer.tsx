@@ -30,6 +30,10 @@ export default function ScoreViewer({
     setIndex(Math.min(Math.max(i, 0), pages.length - 1));
   }
 
+  // pdfHref 는 항상 /api/scores/{versionId}/pdf 형태라서, 같은 버전의 페이지 이미지 주소를 여기서 파생합니다.
+  const pagesBase = pdfHref?.replace(/\/pdf$/, "/pages");
+  const currentPage = pages[index];
+
   return (
     <div className="viewer-overlay" role="dialog" aria-modal="true" aria-label={title}>
       <div className="viewer-topbar">
@@ -65,6 +69,15 @@ export default function ScoreViewer({
               <span key={p.page_no} className={`dot ${i === index ? "active" : ""}`} />
             ))}
           </div>
+        )}
+        {pagesBase && currentPage && (
+          <a
+            href={`${pagesBase}/${currentPage.page_no}`}
+            className="btn btn-secondary"
+            style={{ background: "rgba(255,255,255,0.95)" }}
+          >
+            {pages.length > 1 ? `${currentPage.page_no}페이지 이미지로 저장` : "이미지로 저장"}
+          </a>
         )}
         {pdfHref && (
           <a
