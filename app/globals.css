@@ -341,6 +341,7 @@ a:focus-visible {
 }
 
 .list-title {
+  text-decoration: none;
   font-family: var(--font-title), var(--font-sans);
   font-size: 18px;
   font-weight: 700;
