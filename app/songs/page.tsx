@@ -35,9 +35,11 @@ export default async function SongsPage({ searchParams }: { searchParams: Promis
         ) : (
           <div className="list card" style={{ marginBottom: 24 }}>
             {songs.map((s) => (
-              <Link href={`/songs/${s.id}`} key={s.id} className="list-row">
+              <div key={s.id} className="list-row">
                 <div style={{ flex: 1 }}>
-                  <div className="list-title">{s.title}</div>
+                  <Link href={`/songs/${s.id}`} className="list-title stretched-link">
+                    {s.title}
+                  </Link>
                   <div className="item-meta">
                     {s.keys.length === 0 && <span className="small muted">악보 없음</span>}
                     {s.keys.map((k) => (
@@ -47,11 +49,13 @@ export default async function SongsPage({ searchParams }: { searchParams: Promis
                       </span>
                     ))}
                     {s.youtube_url && (
-                      <span className="small muted">유튜브{s.youtube_label ? ` (${s.youtube_label})` : ""} ↗</span>
+                      <a href={s.youtube_url} target="_blank" rel="noreferrer" className="small muted yt-link">
+                        유튜브{s.youtube_label ? ` (${s.youtube_label})` : ""} ↗
+                      </a>
                     )}
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}

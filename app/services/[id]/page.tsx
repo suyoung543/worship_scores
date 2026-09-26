@@ -89,7 +89,11 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
 
         <div className="stack" style={{ marginBottom: 20, gap: 10 }}>
           <div className="row">
-            <a href={`/api/services/${service.id}/pdf`} className="btn btn-accent">
+            <a
+              href={`/api/services/${service.id}/pdf`}
+              className="btn btn-accent"
+              style={{ minHeight: 40, padding: "0 16px", fontSize: 14 }}
+            >
               콘티 PDF 받기 (내 세션: {SESSION_LABELS[member]})
             </a>
           </div>

@@ -9,8 +9,15 @@ import { updateSongAction } from "@/lib/actions";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
-export default async function SongDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SongDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ saved?: string }>;
+}) {
   const { id } = await params;
+  const { saved } = await searchParams;
   const [song, keys, member] = await Promise.all([getSong(id), listKeysForSong(id), getSessionMember()]);
   if (!song || !member) notFound();
 
@@ -42,9 +49,12 @@ export default async function SongDetailPage({ params }: { params: Promise<{ id:
               defaultValue={song.youtube_label ?? ""}
             />
           </div>
-          <button type="submit" className="btn btn-secondary" style={{ alignSelf: "flex-start" }}>
-            정보 저장
-          </button>
+          <div className="row">
+            <button type="submit" className="btn btn-secondary">
+              정보 저장
+            </button>
+            {saved && <span className="upload-progress">✓ 저장했어요.</span>}
+          </div>
         </form>
 
         <div className="between" style={{ marginBottom: 12 }}>

@@ -157,6 +157,7 @@ export async function updateSongAction(formData: FormData): Promise<void> {
   revalidatePath("/songs");
   revalidatePath("/songs/gallery");
   revalidatePath("/services");
+  redirect(`/songs/${id}?saved=1`);
 }
 
 // ---------- 악보 업로드 ----------

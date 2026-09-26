@@ -313,7 +313,20 @@ a:focus-visible {
   flex-direction: column;
 }
 
+/* 행 전체를 제목 링크로 클릭 가능하게 하되, 유튜브 링크는 그 위에서 따로 클릭되게 합니다. */
+.stretched-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.yt-link {
+  position: relative;
+  z-index: 1;
+}
+
 .list-row {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 14px;
