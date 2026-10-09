@@ -32,7 +32,8 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
   const itemsWithVersion = await Promise.all(
     items.map(async (item) => {
       const summary = await getScoreSummary(item.song_id, item.key);
-      const version = summary.revisions[member] ?? summary.original ?? null;
+      // 내 수정본 -> 원본 -> (원본도 없으면) 메인건반 수정본 순. getEffectiveVersion과 동일한 규칙.
+      const version = summary.revisions[member] ?? summary.original ?? summary.revisions.keys ?? null;
 
       const slots: { key: string; label: string; version: VersionWithPages | null }[] = [
         { key: "original", label: "원본", version: summary.original ?? null },
@@ -90,7 +91,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
         <div className="stack" style={{ marginBottom: 20, gap: 10 }}>
           <div className="row">
             <a
-              href={`/api/services/${service.id}/pdf`}
+              href={`/api/services/${service.id}/pdf?version=${member}`}
               className="btn btn-accent"
               style={{ minHeight: 40, padding: "0 16px", fontSize: 14 }}
             >

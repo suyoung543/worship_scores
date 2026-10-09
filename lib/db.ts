@@ -420,14 +420,16 @@ export async function getScoreSummary(songId: string, key: string): Promise<Scor
 }
 
 /** 예배 콘티에서 "지금 로그인한 세션에게 보여줄" 악보를 고릅니다:
- *  내 세션의 최신 수정본이 있으면 그것을, 없으면 원본을 반환합니다. */
+ *  내 세션의 최신 수정본 → 원본 → (원본도 없으면) 메인건반 수정본 순으로 반환합니다.
+ *  원본 없이 메인건반 수정본만 있는 곡이 있어서, 원본이 없을 때는 비어 보이는 대신
+ *  메인건반 수정본을 보여줍니다. */
 export async function getEffectiveVersion(
   songId: string,
   key: string,
   member: SessionMember
 ): Promise<VersionWithPages | null> {
   const summary = await getScoreSummary(songId, key);
-  return summary.revisions[member] ?? summary.original ?? null;
+  return summary.revisions[member] ?? summary.original ?? summary.revisions.keys ?? null;
 }
 
 export async function getVersionById(versionId: string): Promise<VersionWithPages | null> {
