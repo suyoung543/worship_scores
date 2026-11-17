@@ -4,10 +4,11 @@ import NavBar from "@/components/NavBar";
 import ViewScoreButton from "@/components/ViewScoreButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import AddServiceItemForm from "@/components/AddServiceItemForm";
+import VersionKeyPicker from "@/components/VersionKeyPicker";
 import { getScoreSummary, getService, listServiceItems, listSongVariants, listSongsWithScoreInfo, type VersionWithPages } from "@/lib/db";
 import { getSessionMember, SESSION_LABELS, SESSION_MEMBERS } from "@/lib/auth";
 import { displayKey, formatServiceDate, splitKey } from "@/lib/format";
-import { deleteServiceAction, moveServiceItemAction, removeServiceItemAction, updateServiceAction, updateServiceItemMemoAction } from "@/lib/actions";
+import { deleteServiceAction, moveServiceItemAction, removeServiceItemAction, updateServiceAction, updateServiceItemKeyAction, updateServiceItemMemoAction } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -184,46 +185,72 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
                     </div>
                   )}
 
-                  <div className="item-section item-footer">
-                    {/* 저장 후 송폼 값이 바뀌면 key가 바뀌어 새로 그려지므로 접힌 상태로 돌아갑니다. */}
-                    <details className="songform-edit" key={item.memo ?? ""}>
-                      <summary>{item.memo ? "✎ 송폼 수정" : "✎ 송폼 적기"}</summary>
-                      <form action={updateServiceItemMemoAction} className="stack" style={{ marginTop: 8, gap: 8 }}>
-                        <input type="hidden" name="serviceId" value={service.id} />
-                        <input type="hidden" name="itemId" value={item.id} />
-                        <div className="field">
-                          <textarea name="memo" rows={3} defaultValue={item.memo ?? ""} placeholder="예: I - V1 - V2 - C - V1 - C - B - C - O" />
-                        </div>
-                        <button type="submit" className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }}>
-                          저장
-                        </button>
-                      </form>
-                    </details>
-                    <div className="item-actions" style={{ marginLeft: "auto" }}>
-                      <form action={moveServiceItemAction}>
-                        <input type="hidden" name="serviceId" value={service.id} />
-                        <input type="hidden" name="itemId" value={item.id} />
-                        <input type="hidden" name="direction" value="up" />
-                        <button type="submit" className="btn-icon" disabled={i === 0} aria-label="위로">
-                          ↑
-                        </button>
-                      </form>
-                      <form action={moveServiceItemAction}>
-                        <input type="hidden" name="serviceId" value={service.id} />
-                        <input type="hidden" name="itemId" value={item.id} />
-                        <input type="hidden" name="direction" value="down" />
-                        <button type="submit" className="btn-icon" disabled={i === itemsWithVersion.length - 1} aria-label="아래로">
-                          ↓
-                        </button>
-                      </form>
-                      <form action={removeServiceItemAction}>
-                        <input type="hidden" name="serviceId" value={service.id} />
-                        <input type="hidden" name="itemId" value={item.id} />
-                        <ConfirmSubmitButton confirmMessage="콘티에서 이 곡을 뺄까요?" className="btn-danger-text">
-                          빼기
-                        </ConfirmSubmitButton>
-                      </form>
+                  <div className="item-section">
+                    <div className="item-footer">
+                      {/* 글자 버튼은 제자리에 두고, 누르면 아래 패널이 열립니다 (CSS :has). 같은 name이라 하나만 열림. 저장 후 값이 바뀌면 key가 바뀌어 접힘. */}
+                      <details className="service-edit-toggle toggle-key" name={`edit-${item.id}`} key={`key-${item.key}`}>
+                        <summary>✎ 버전·키</summary>
+                      </details>
+                      <details className="service-edit-toggle toggle-songform" name={`edit-${item.id}`} key={`form-${item.memo ?? ""}`}>
+                        <summary>{item.memo ? "✎ 송폼 수정" : "✎ 송폼 적기"}</summary>
+                      </details>
+                      <div className="item-actions" style={{ marginLeft: "auto" }}>
+                        <form action={moveServiceItemAction}>
+                          <input type="hidden" name="serviceId" value={service.id} />
+                          <input type="hidden" name="itemId" value={item.id} />
+                          <input type="hidden" name="direction" value="up" />
+                          <button type="submit" className="btn-icon" disabled={i === 0} aria-label="위로">
+                            ↑
+                          </button>
+                        </form>
+                        <form action={moveServiceItemAction}>
+                          <input type="hidden" name="serviceId" value={service.id} />
+                          <input type="hidden" name="itemId" value={item.id} />
+                          <input type="hidden" name="direction" value="down" />
+                          <button type="submit" className="btn-icon" disabled={i === itemsWithVersion.length - 1} aria-label="아래로">
+                            ↓
+                          </button>
+                        </form>
+                        <form action={removeServiceItemAction}>
+                          <input type="hidden" name="serviceId" value={service.id} />
+                          <input type="hidden" name="itemId" value={item.id} />
+                          <ConfirmSubmitButton confirmMessage="콘티에서 이 곡을 뺄까요?" className="btn-danger-text">
+                            빼기
+                          </ConfirmSubmitButton>
+                        </form>
+                      </div>
                     </div>
+
+                    <form action={updateServiceItemKeyAction} className="edit-panel panel-key" key={`panel-key-${item.key}`}>
+                      <input type="hidden" name="serviceId" value={service.id} />
+                      <input type="hidden" name="itemId" value={item.id} />
+                      <div className="field">
+                        <label>버전·키</label>
+                        {(() => {
+                          const info = songs.find((s) => s.id === item.song_id);
+                          const keys = (info?.keys ?? []).map((k) => k.key);
+                          const versionOptions = Array.from(
+                            new Set([...keys.map((k) => splitKey(k).version), ...(info?.variants ?? []).map((v) => v.name)])
+                          ).filter(Boolean);
+                          return <VersionKeyPicker keys={keys} versionOptions={versionOptions} initialKey={item.key} />;
+                        })()}
+                      </div>
+                      <button type="submit" className="btn btn-primary btn-sm">
+                        저장
+                      </button>
+                    </form>
+
+                    <form action={updateServiceItemMemoAction} className="edit-panel panel-songform" key={`panel-form-${item.memo ?? ""}`}>
+                      <input type="hidden" name="serviceId" value={service.id} />
+                      <input type="hidden" name="itemId" value={item.id} />
+                      <div className="field">
+                        <label>송폼</label>
+                        <textarea name="memo" rows={1} defaultValue={item.memo ?? ""} placeholder="예: I - V1 - V2 - C - V1 - C - B - C - O" />
+                      </div>
+                      <button type="submit" className="btn btn-primary btn-sm">
+                        저장
+                      </button>
+                    </form>
                   </div>
                 </div>
               );

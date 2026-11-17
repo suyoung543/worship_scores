@@ -494,29 +494,25 @@ a.badge.yt-link {
   gap: 8px;
 }
 
-.songform-edit summary {
-  list-style: none;
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-soft);
-  cursor: pointer;
-}
-
-.songform-edit summary::-webkit-details-marker {
+/* 콘티 곡 카드: 버전·키 / 송폼 수정 패널. 위 글자 버튼(details)이 열리면 해당 패널만 보입니다. */
+.edit-panel {
   display: none;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.songform-edit[open] summary {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: #fff;
+.item-footer .service-edit-toggle summary {
+  font-size: 14px;
+}
+
+.edit-panel .btn {
+  align-self: flex-end;
+}
+
+.item-section:has(.toggle-key[open]) .panel-key,
+.item-section:has(.toggle-songform[open]) .panel-songform {
+  display: flex;
 }
 
 /* 입력칸 아래 추천 (예: 있는 버전) — 작은 알약 모양 */
@@ -707,11 +703,6 @@ a.badge.jump-key {
   font-size: 13.5px;
   line-height: 1.45;
   white-space: pre-wrap;
-}
-
-.songform-edit[open] {
-  order: 2;
-  flex-basis: 100%;
 }
 
 .item-row:last-child {

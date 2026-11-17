@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation";
 import { filesToA4Pages, uploadScorePages, type ConvertedPage } from "@/lib/convert";
 import { addServiceItemAction } from "@/lib/actions";
 import ScoreTypeSelect, { appendScoreType, type ScoreType } from "@/components/ScoreTypeSelect";
-import { keyWithVersion, splitKey } from "@/lib/format";
-import VersionInput, { canonicalVersion } from "@/components/VersionInput";
-import KeyDropdown, { MANUAL } from "@/components/KeyDropdown";
+import { splitKey } from "@/lib/format";
+import VersionKeyPicker from "@/components/VersionKeyPicker";
 
 type SongOption = { id: string; title: string; keys?: { key: string }[]; variants?: { name: string }[] };
 
@@ -26,10 +25,8 @@ export default function AddServiceItemForm({
   const [songQuery, setSongQuery] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [selectedSong, setSelectedSong] = useState<SongOption | null>(null);
-  const [keyInput, setKeyInput] = useState("");
-  const [versionInput, setVersionInput] = useState("");
-  // 기존 곡일 때 드롭다운 값: "" (아직 안 고름) | 저장된 키 그대로 (예: "C(예람워십)") | MANUAL (직접 입력)
-  const [keyChoice, setKeyChoice] = useState("");
+  // 바뀌면 버전·키 고르기를 새로 그려서 비웁니다 (제출 후)
+  const [pickerReset, setPickerReset] = useState(0);
   const [scoreFiles, setScoreFiles] = useState<File[]>([]);
   const [scoreType, setScoreType] = useState<ScoreType>("original");
   const [status, setStatus] = useState<Status>("idle");
@@ -45,9 +42,7 @@ export default function AddServiceItemForm({
     setSongQuery("");
     setNewTitle("");
     setSelectedSong(null);
-    setKeyInput("");
-    setVersionInput("");
-    setKeyChoice("");
+    setPickerReset((n) => n + 1);
   }
 
   const busy = status === "converting" || status === "saving";
@@ -63,34 +58,6 @@ export default function AddServiceItemForm({
         ).filter(Boolean)
       : [];
 
-  // 고른 곡에 올라온 악보를 버전별로 묶은 것 (기본 버전이 맨 앞): [["", ["E","G"]], ["어노인팅", ["E"]]]
-  const scoreGroups = new Map<string, string[]>();
-  if (mode === "existing") {
-    for (const k of selectedSong?.keys ?? []) {
-      const { base, version } = splitKey(k.key);
-      scoreGroups.set(version, [...(scoreGroups.get(version) ?? []), base]);
-    }
-  }
-  const sortedScoreGroups = Array.from(scoreGroups).sort(([a], [b]) =>
-    a === "" ? -1 : b === "" ? 1 : a.localeCompare(b, "ko")
-  );
-  const hasExistingScores = sortedScoreGroups.length > 0;
-  const showManual = !hasExistingScores || keyChoice === MANUAL;
-
-  function chooseKey(value: string) {
-    setKeyChoice(value);
-    setErrorMsg("");
-    if (value && value !== MANUAL) {
-      const { base, version } = splitKey(value);
-      setKeyInput(base);
-      setVersionInput(version);
-    } else {
-      // 직접 입력으로 바꾸면 이전에 고른 값이 몰래 남지 않게 비웁니다.
-      setKeyInput("");
-      setVersionInput("");
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErrorMsg("");
@@ -104,10 +71,9 @@ export default function AddServiceItemForm({
       setErrorMsg("새 곡 제목을 입력해주세요.");
       return;
     }
-    const key = keyInput.trim() ? keyWithVersion(keyInput, canonicalVersion(versionInput, versionOptions)) : "";
-    formData.set("key", key);
+    const key = String(formData.get("key") ?? ""); // VersionKeyPicker가 채운 값
     if (!key) {
-      setErrorMsg(showManual ? "키를 입력해주세요." : "버전·키를 골라주세요.");
+      setErrorMsg("버전·키를 골라주거나 입력해주세요.");
       return;
     }
 
@@ -204,7 +170,6 @@ export default function AddServiceItemForm({
                   style={{ justifyContent: "flex-start", textAlign: "left" }}
                   onClick={() => {
                     setSelectedSong(s);
-                    setKeyChoice("");
                     setSongQuery(s.title);
                   }}
                 >
@@ -251,28 +216,11 @@ export default function AddServiceItemForm({
 
       <div className="field">
         <label>버전·키</label>
-        {hasExistingScores && (
-          <KeyDropdown
-            value={keyChoice}
-            onChange={chooseKey}
-            groups={sortedScoreGroups.map(([version, bases]) => [
-              version,
-              bases.map((base): [string, string] => [keyWithVersion(base, version), base]),
-            ])}
-          />
-        )}
-        {showManual && (
-          <div className="version-key-row" style={hasExistingScores ? { marginTop: 4 } : undefined}>
-            <div className="field">
-              <label htmlFor="keyVersion" className="sub-label">버전 (선택)</label>
-              <VersionInput id="keyVersion" value={versionInput} onChange={setVersionInput} options={versionOptions} suggestWhenEmpty={false} />
-            </div>
-            <div className="field">
-              <label htmlFor="key" className="sub-label">키</label>
-              <input id="key" type="text" placeholder="예: D" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} />
-            </div>
-          </div>
-        )}
+        <VersionKeyPicker
+          key={`${mode}-${selectedSong?.id ?? ""}-${pickerReset}`}
+          keys={mode === "existing" ? (selectedSong?.keys ?? []).map((k) => k.key) : []}
+          versionOptions={versionOptions}
+        />
       </div>
 
       <div className="field">

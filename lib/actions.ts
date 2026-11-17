@@ -129,6 +129,17 @@ export async function updateServiceItemMemoAction(formData: FormData): Promise<v
   revalidatePath(`/services/${serviceId}`);
 }
 
+export async function updateServiceItemKeyAction(formData: FormData): Promise<void> {
+  await requireMember();
+  const serviceId = String(formData.get("serviceId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "");
+  const key = normalizeKey(String(formData.get("key") ?? ""));
+  if (!key) throw new Error("버전·키를 골라주세요.");
+  const { error } = await supabaseAdmin.from("service_items").update({ key }).eq("id", itemId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/services/${serviceId}`);
+}
+
 export async function removeServiceItemAction(formData: FormData): Promise<void> {
   await requireMember();
   const serviceId = String(formData.get("serviceId") ?? "");
