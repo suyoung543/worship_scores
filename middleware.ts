@@ -18,5 +18,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // /login, 정적 파일, next 내부 경로를 제외한 모든 경로를 로그인 필수로 보호합니다.
-  matcher: ["/((?!login|_next/static|_next/image|favicon.ico|pdf.worker.min.mjs).*)"],
+  matcher: ["/((?!login|_next/static|_next/image|favicon.ico|manifest.webmanifest|icon|apple-icon|pdf.worker.min.mjs).*)"],
 };

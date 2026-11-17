@@ -79,6 +79,23 @@ create table if not exists service_items (
   unique (service_id, position)
 );
 
+-- 곡의 버전별 정보 (참고 유튜브 링크/팀명). name = '' 은 기본 버전.
+-- 버전 이름은 악보 키 뒤에 "(버전)"으로 붙어 저장됩니다 (예: key = 'E(어노인팅)').
+create table if not exists song_variants (
+  song_id uuid not null references songs(id) on delete cascade,
+  name text not null default '',
+  youtube_url text,
+  youtube_label text,
+  primary key (song_id, name)
+);
+alter table song_variants enable row level security;
+
+-- 예전에 곡(songs)에 바로 저장하던 유튜브 정보를 기본 버전으로 옮깁니다. (songs.youtube_* 컬럼은 더 이상 쓰지 않음)
+insert into song_variants (song_id, name, youtube_url, youtube_label)
+  select id, '', youtube_url, youtube_label from songs
+  where youtube_url is not null or youtube_label is not null
+  on conflict (song_id, name) do nothing;
+
 -- Storage: 악보 이미지 저장용 private 버킷
 insert into storage.buckets (id, name, public)
   values ('scores', 'scores', false)

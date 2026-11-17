@@ -20,9 +20,14 @@ import {
   moveServiceItem,
   removeServiceItem,
   updateService,
+  deleteScoreVersion,
+  deleteSong,
+  renameSongVariant,
+  saveSongVariant,
+  updateServiceItemMemo,
   updateSong,
 } from "@/lib/db";
-import { normalizeKey } from "@/lib/format";
+import { keyWithVersion, normalizeKey, splitKey } from "@/lib/format";
 import { SCORES_BUCKET, supabaseAdmin } from "@/lib/supabaseAdmin";
 
 async function requireMember(): Promise<SessionMember> {
@@ -97,14 +102,15 @@ export async function addServiceItemAction(formData: FormData): Promise<{ songId
   let songId = String(formData.get("songId") ?? "");
   const newSongTitle = String(formData.get("newSongTitle") ?? "").trim();
   const youtubeUrl = String(formData.get("youtubeUrl") ?? "").trim();
-  const youtubeLabel = String(formData.get("youtubeLabel") ?? "").trim();
   const key = normalizeKey(String(formData.get("key") ?? ""));
   const memo = String(formData.get("memo") ?? "").trim();
 
   if (!key) throw new Error("키를 입력해주세요.");
 
   if (!songId && newSongTitle) {
-    songId = await createSong({ title: newSongTitle, youtubeUrl: youtubeUrl || null, youtubeLabel: youtubeLabel || null });
+    songId = await createSong({ title: newSongTitle });
+    // 새 곡의 유튜브 정보는 콘티에 넣는 버전(키 뒤 괄호)의 정보로 저장합니다.
+    await saveSongVariant(songId, splitKey(key).version, youtubeUrl || null);
   }
   if (!songId) throw new Error("곡을 선택하거나 새 곡 제목을 입력해주세요.");
 
@@ -112,6 +118,15 @@ export async function addServiceItemAction(formData: FormData): Promise<{ songId
   revalidatePath(`/services/${serviceId}`);
   revalidatePath("/songs");
   return { songId };
+}
+
+export async function updateServiceItemMemoAction(formData: FormData): Promise<void> {
+  await requireMember();
+  const serviceId = String(formData.get("serviceId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "");
+  const memo = String(formData.get("memo") ?? "").trim();
+  await updateServiceItemMemo(itemId, memo || null);
+  revalidatePath(`/services/${serviceId}`);
 }
 
 export async function removeServiceItemAction(formData: FormData): Promise<void> {
@@ -137,9 +152,9 @@ export async function createSongAction(formData: FormData): Promise<void> {
   await requireMember();
   const title = String(formData.get("title") ?? "").trim();
   const youtubeUrl = String(formData.get("youtubeUrl") ?? "").trim();
-  const youtubeLabel = String(formData.get("youtubeLabel") ?? "").trim();
   if (!title) throw new Error("곡 제목을 입력해주세요.");
-  const id = await createSong({ title, youtubeUrl: youtubeUrl || null, youtubeLabel: youtubeLabel || null });
+  const id = await createSong({ title });
+  await saveSongVariant(id, "", youtubeUrl || null);
   revalidatePath("/songs");
   revalidatePath("/songs/gallery");
   redirect(`/songs/${id}`);
@@ -149,10 +164,8 @@ export async function updateSongAction(formData: FormData): Promise<void> {
   await requireMember();
   const id = String(formData.get("songId") ?? "");
   const title = String(formData.get("title") ?? "").trim();
-  const youtubeUrl = String(formData.get("youtubeUrl") ?? "").trim();
-  const youtubeLabel = String(formData.get("youtubeLabel") ?? "").trim();
   if (!title) throw new Error("곡 제목을 입력해주세요.");
-  await updateSong(id, { title, youtubeUrl: youtubeUrl || null, youtubeLabel: youtubeLabel || null });
+  await updateSong(id, { title });
   revalidatePath(`/songs/${id}`);
   revalidatePath("/songs");
   revalidatePath("/songs/gallery");
@@ -160,10 +173,66 @@ export async function updateSongAction(formData: FormData): Promise<void> {
   redirect(`/songs/${id}?saved=1`);
 }
 
+export async function saveSongVariantAction(formData: FormData): Promise<void> {
+  await requireMember();
+  const songId = String(formData.get("songId") ?? "");
+  const oldName = String(formData.get("variant") ?? "");
+  // 업로드할 때와 똑같이 정규화 (앞뒤·연속 공백 정리, 띄어쓰기는 유지)
+  const newName = splitKey(keyWithVersion("C", String(formData.get("name") ?? oldName))).version;
+  const youtubeUrl = String(formData.get("youtubeUrl") ?? "").trim();
+
+  if (newName !== oldName && !(await renameSongVariant(songId, oldName, newName))) {
+    redirect(`/songs/${songId}?error=version-exists`);
+  }
+  await saveSongVariant(songId, newName, youtubeUrl || null);
+  revalidatePath(`/songs/${songId}`);
+  revalidatePath("/songs");
+  revalidatePath("/services", "layout");
+  redirect(`/songs/${songId}`);
+}
+
+export async function deleteSongAction(formData: FormData): Promise<void> {
+  await requireMember();
+  const songId = String(formData.get("songId") ?? "");
+  if (!(await deleteSong(songId))) redirect(`/songs/${songId}?error=in-service`);
+  revalidatePath("/songs");
+  revalidatePath("/songs/gallery");
+  redirect("/songs");
+}
+
+export async function updateScoreMemoAction(formData: FormData): Promise<void> {
+  await requireMember();
+  const versionId = String(formData.get("versionId") ?? "");
+  const memo = String(formData.get("memo") ?? "").trim();
+  const { data, error } = await supabaseAdmin
+    .from("score_versions")
+    .update({ memo: memo || null })
+    .eq("id", versionId)
+    .select("song_id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (data) revalidatePath(`/songs/${data.song_id}`);
+}
+
+export async function deleteScoreVersionAction(formData: FormData): Promise<void> {
+  await requireMember();
+  const songId = await deleteScoreVersion(String(formData.get("versionId") ?? ""));
+  if (songId) revalidatePath(`/songs/${songId}`);
+  revalidatePath("/songs");
+  revalidatePath("/songs/gallery");
+  revalidatePath("/services", "layout");
+}
+
 // ---------- 악보 업로드 ----------
 // pages 는 클라이언트(lib/convert.ts)에서 이미 A4 세로 비율 JPEG로 변환된 페이지들입니다.
 
-export async function uploadScoreVersionAction(formData: FormData): Promise<void> {
+/** 원본 이미지 파일 경로: A4 페이지 경로 "…/abc-1.jpg" 옆에 "…/abc-1-orig.png" 처럼 둡니다. */
+function originalPathFor(a4Path: string, contentType: string): string {
+  const ext = contentType.split("/")[1]?.replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
+  return a4Path.replace(/\.jpg$/, `-orig.${ext}`);
+}
+
+export async function uploadScoreVersionAction(formData: FormData): Promise<{ originalUploadUrls: string[] }> {
   const member = await requireMember();
 
   const songId = String(formData.get("songId") ?? "");
@@ -175,6 +244,8 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
     .getAll("pages")
     .filter((p): p is File => typeof p === "object" && p !== null && "arrayBuffer" in p && (p as File).size > 0);
 
+  const originalTypes = formData.getAll("originalTypes").map(String);
+  const a4Flags = formData.getAll("a4Flags").map(String);
   if (!songId || !key) throw new Error("곡과 키 정보가 없습니다.");
   if (pages.length === 0) throw new Error("업로드할 페이지 이미지가 없습니다.");
   if (kind !== "original" && kind !== "revision") throw new Error("잘못된 요청입니다.");
@@ -210,7 +281,8 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
   // 새 이미지는 예전 파일과 겹치지 않는 경로로 먼저 올립니다.
   // 업로드가 실패해도 기존 악보는 그대로 남고, 성공한 뒤에만 교체됩니다.
   const stamp = Date.now().toString(36);
-  const newPaths = pages.map((_, i) => `${songId}/${versionId}/${stamp}-${i + 1}.jpg`);
+  // 원래 A4였던 페이지는 파일명에 "-a4"를 붙여 표시합니다 → 콘티 PDF에서 축소 없이 100%로 넣습니다 (lib/pdf.ts).
+  const newPaths = pages.map((_, i) => `${songId}/${versionId}/${stamp}-${i + 1}${a4Flags[i] === "1" ? "-a4" : ""}.jpg`);
 
   try {
     // 페이지별로 순서대로 업로드하면 페이지 수만큼 왕복이 누적되어 느려지므로 병렬로 처리합니다.
@@ -250,6 +322,14 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
       if (updateErr) throw new Error(updateErr.message);
     }
 
+    // 예전 업로드의 원본 이미지(-orig)는 score_pages에 경로가 없으므로 폴더를 훑어서 같이 지웁니다.
+    if (existing) {
+      const { data: files } = await supabaseAdmin.storage.from(SCORES_BUCKET).list(`${songId}/${versionId}`);
+      for (const f of files ?? []) {
+        if (f.name.includes("-orig.") && !f.name.startsWith(`${stamp}-`)) oldPaths.push(`${songId}/${versionId}/${f.name}`);
+      }
+    }
+
     if (oldPaths.length > 0) {
       try {
         await supabaseAdmin.storage.from(SCORES_BUCKET).remove(oldPaths);
@@ -272,4 +352,14 @@ export async function uploadScoreVersionAction(formData: FormData): Promise<void
   revalidatePath("/songs");
   revalidatePath("/songs/gallery");
   revalidatePath("/services");
+
+  // 원본 크기 이미지는 브라우저가 이 서명 URL로 Storage에 직접 올립니다 (lib/convert.ts uploadScorePages).
+  const originalUploadUrls: string[] = [];
+  for (let i = 0; i < newPaths.length; i++) {
+    const type = originalTypes[i];
+    if (!type?.startsWith("image/")) continue;
+    const { data } = await supabaseAdmin.storage.from(SCORES_BUCKET).createSignedUploadUrl(originalPathFor(newPaths[i], type), { upsert: true });
+    if (data) originalUploadUrls[i] = data.signedUrl;
+  }
+  return { originalUploadUrls };
 }

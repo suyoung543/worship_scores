@@ -8,7 +8,32 @@ const A4_HEIGHT_PX = 1754;
 const JPEG_QUALITY = 0.85;
 const PDF_RENDER_SCALE = 150 / 72; // pdf.js viewport(scale=1)는 72dpi 기준 좌표계입니다.
 
-function drawIntoA4Canvas(source: CanvasImageSource, srcWidth: number, srcHeight: number): Blob | Promise<Blob> {
+import { uploadScoreVersionAction } from "@/lib/actions";
+
+/** a4: 화면 보기·PDF용 A4 페이지, original: "이미지로 저장"용 원본 크기 이미지,
+ *  isA4: 원래부터 A4 비율이었는지 (이미 여백이 있는 출력본일 수 있어 콘티 PDF에서 축소하지 않음) */
+export interface ConvertedPage {
+  a4: Blob;
+  original: Blob;
+  isA4: boolean;
+}
+
+// ponytail: 비율만 보고 판단하므로 A4 비율의 사진도 100%로 들어갑니다.
+function isA4Ratio(width: number, height: number): boolean {
+  return Math.abs(width / height - A4_WIDTH_PX / A4_HEIGHT_PX) < 0.02;
+}
+
+function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("이미지 변환에 실패했습니다."))),
+      "image/jpeg",
+      JPEG_QUALITY
+    );
+  });
+}
+
+function drawIntoA4Canvas(source: CanvasImageSource, srcWidth: number, srcHeight: number): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = A4_WIDTH_PX;
   canvas.height = A4_HEIGHT_PX;
@@ -25,31 +50,29 @@ function drawIntoA4Canvas(source: CanvasImageSource, srcWidth: number, srcHeight
   const dy = (A4_HEIGHT_PX - drawHeight) / 2;
   ctx.drawImage(source, 0, 0, srcWidth, srcHeight, dx, dy, drawWidth, drawHeight);
 
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("이미지 변환에 실패했습니다."))),
-      "image/jpeg",
-      JPEG_QUALITY
-    );
-  });
+  return canvasToJpeg(canvas);
 }
 
-async function imageFileToA4Blob(file: File): Promise<Blob> {
+async function imageFileToPage(file: File): Promise<ConvertedPage> {
   const bitmap = await createImageBitmap(file);
   try {
-    return await drawIntoA4Canvas(bitmap, bitmap.width, bitmap.height);
+    return {
+      a4: await drawIntoA4Canvas(bitmap, bitmap.width, bitmap.height),
+      original: file,
+      isA4: isA4Ratio(bitmap.width, bitmap.height),
+    };
   } finally {
     bitmap.close();
   }
 }
 
-async function pdfFileToA4Blobs(file: File, onPage?: () => void): Promise<Blob[]> {
+async function pdfFileToPages(file: File, onPage?: () => void): Promise<ConvertedPage[]> {
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
   pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjsLib.getDocument({ data }).promise;
-  const blobs: Blob[] = [];
+  const blobs: ConvertedPage[] = [];
 
   for (let pageNo = 1; pageNo <= doc.numPages; pageNo++) {
     const page = await doc.getPage(pageNo);
@@ -62,8 +85,8 @@ async function pdfFileToA4Blobs(file: File, onPage?: () => void): Promise<Blob[]
     if (!ctx) throw new Error("캔버스를 사용할 수 없는 브라우저입니다.");
 
     await page.render({ canvas: renderCanvas, canvasContext: ctx, viewport }).promise;
-    const blob = await drawIntoA4Canvas(renderCanvas, renderCanvas.width, renderCanvas.height);
-    blobs.push(blob);
+    const a4 = await drawIntoA4Canvas(renderCanvas, renderCanvas.width, renderCanvas.height);
+    blobs.push({ a4, original: await canvasToJpeg(renderCanvas), isA4: isA4Ratio(renderCanvas.width, renderCanvas.height) });
     onPage?.();
   }
 
@@ -75,8 +98,8 @@ async function pdfFileToA4Blobs(file: File, onPage?: () => void): Promise<Blob[]
  * A4 세로 비율 JPEG 페이지 Blob 배열로 돌려줍니다. PDF는 페이지 수만큼
  * 여러 장으로 풀리고, 이미지 파일은 한 장으로 취급됩니다.
  */
-export async function filesToA4Pages(files: File[], onPage?: (done: number) => void): Promise<Blob[]> {
-  const pages: Blob[] = [];
+export async function filesToA4Pages(files: File[], onPage?: (done: number) => void): Promise<ConvertedPage[]> {
+  const pages: ConvertedPage[] = [];
   let done = 0;
   const notify = () => {
     done += 1;
@@ -85,10 +108,10 @@ export async function filesToA4Pages(files: File[], onPage?: (done: number) => v
 
   for (const file of files) {
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-      const pdfPages = await pdfFileToA4Blobs(file, notify);
+      const pdfPages = await pdfFileToPages(file, notify);
       pages.push(...pdfPages);
     } else if (file.type.startsWith("image/")) {
-      pages.push(await imageFileToA4Blob(file));
+      pages.push(await imageFileToPage(file));
       notify();
     } else {
       throw new Error(`지원하지 않는 파일 형식입니다: ${file.name}`);
@@ -96,4 +119,28 @@ export async function filesToA4Pages(files: File[], onPage?: (done: number) => v
   }
 
   return pages;
+}
+
+/**
+ * A4 페이지는 서버 액션으로 올리고, 원본 크기 이미지는 서버가 발급한 서명 URL로 브라우저에서
+ * Storage에 바로 올립니다 (Vercel 요청 본문 4.5MB 제한 때문에 큰 원본 사진은 서버를 거칠 수 없음).
+ * 원본 업로드가 실패해도 악보는 저장된 상태이고, "이미지로 저장"은 A4 이미지로 대신 받아집니다.
+ */
+export async function uploadScorePages(formData: FormData, pages: ConvertedPage[]): Promise<void> {
+  pages.forEach((p, i) => {
+    formData.append("pages", p.a4, `page-${i + 1}.jpg`);
+    formData.append("originalTypes", p.original.type || "image/jpeg");
+    formData.append("a4Flags", p.isA4 ? "1" : "0");
+  });
+
+  const { originalUploadUrls } = await uploadScoreVersionAction(formData);
+  await Promise.all(
+    originalUploadUrls.map((url, i) =>
+      fetch(url, {
+        method: "PUT",
+        body: pages[i].original,
+        headers: { "content-type": pages[i].original.type || "image/jpeg", "x-upsert": "true" },
+      }).catch(() => undefined)
+    )
+  );
 }

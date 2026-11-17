@@ -5,8 +5,8 @@
   --ink-soft: #45527a;
   --muted: #6f6d63;
   --line: #e7e2d5;
-  --accent: #8a2c2c;
-  --accent-soft: #f5e7e2;
+  --accent: #34507f;
+  --accent-soft: #e8ecf4;
   --danger: #a3341f;
   --radius: 10px;
   --font-sans: var(--font-noto), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -151,6 +151,13 @@ h3 {
   font-size: 13px;
 }
 
+.song-form {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: pre-wrap;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -177,6 +184,16 @@ h3 {
   background: var(--surface);
   color: var(--ink);
   width: 100%;
+}
+
+/* 선택 상자: iOS 기본 회색 모양 대신 다른 입력칸과 같은 모양 + 오른쪽 화살표 */
+.field select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%2345527a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
 }
 
 .field input:focus-visible,
@@ -221,6 +238,34 @@ a:focus-visible {
   color: #fff;
 }
 
+/* 두 갈래 중 하나를 고르는 탭 (예: 기존 곡 / 새 곡) */
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 4px;
+  gap: 4px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.segmented button {
+  min-height: 40px;
+  border: none;
+  border-radius: calc(var(--radius) - 3px);
+  background: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.segmented button.active {
+  background: var(--ink);
+  color: #fff;
+}
+
 /* ---------- 버튼 ---------- */
 
 .btn {
@@ -256,8 +301,8 @@ a:focus-visible {
 }
 
 .btn-accent {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .btn-text {
@@ -277,6 +322,31 @@ a:focus-visible {
   min-height: auto;
   padding: 6px 4px;
   font-weight: 500;
+}
+
+.service-edit-toggle summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 4px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.service-edit-toggle summary::-webkit-details-marker {
+  display: none;
+}
+
+.service-edit-toggle[open] summary {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.service-edit-form {
+  display: none;
+}
+
+.service-head:has(.service-edit-toggle[open]) + .service-edit-form {
+  display: flex;
 }
 
 .btn-block {
@@ -323,6 +393,12 @@ a:focus-visible {
 .yt-link {
   position: relative;
   z-index: 1;
+}
+
+/* 유튜브 링크가 있는 배지: 밑줄로 링크임을 표시 */
+a.badge.yt-link {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .list-row {
@@ -378,12 +454,264 @@ a:focus-visible {
 /* ---------- 예배 상세 / 곡 항목 ---------- */
 
 .item-row {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.item-head {
   display: grid;
-  grid-template-columns: 32px 1fr auto;
+  grid-template-columns: 24px 1fr auto;
   gap: 12px;
   align-items: center;
-  padding: 14px 2px;
-  border-bottom: 1px solid var(--line);
+}
+
+/* 곡 카드 안의 하위 영역(송폼 / 다른 악보 / 하단 버튼): 제목 열에 맞춰 들여쓰고 얇은 선으로 구분 */
+.item-section {
+  margin: 12px 0 0 36px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.item-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.version-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+}
+
+.item-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.songform-edit summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.songform-edit summary::-webkit-details-marker {
+  display: none;
+}
+
+.songform-edit[open] summary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+/* 입력칸 아래 추천 (예: 있는 버전) — 작은 알약 모양 */
+.chip-suggest {
+  border: none;
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 직접 그린 선택 상자 (KeyDropdown) */
+.dropdown {
+  position: relative;
+}
+
+.dropdown-button {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 36px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%2345527a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right 14px center;
+  font-size: 16px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dropdown-button.placeholder {
+  color: var(--muted);
+}
+
+.dropdown-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(31, 42, 68, 0.12);
+}
+
+.dropdown-group {
+  padding: 8px 10px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.dropdown-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px 0 20px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dropdown-option:hover,
+.dropdown-option[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.dropdown-divider {
+  margin: 6px 4px;
+  border-top: 1px solid var(--line);
+}
+
+.dropdown-option.dropdown-manual {
+  padding-left: 10px;
+  color: var(--ink-soft);
+}
+
+/* 버전·키 입력을 한 줄에: 버전은 넓게, 키는 좁게 */
+.version-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 8px;
+  align-items: start;
+}
+
+.field .sub-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* 곡 정보 첫 카드의 버전·키 바로가기 */
+.jump-version {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: none;
+  margin-right: 2px;
+}
+
+a.badge.jump-key {
+  text-decoration: none;
+  min-height: 30px;
+  min-width: 36px;
+  justify-content: center;
+}
+
+/* 곡 정보: 같은 키 안의 버전 묶음 */
+.variant-block {
+  padding: 10px 0 12px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.variant-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+/* 곡 정보: 악보 메모 보기·고치기 */
+.memo-toggle summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-soft);
+  padding: 4px;
+}
+
+.memo-toggle summary::-webkit-details-marker {
+  display: none;
+}
+
+.memo-note {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.memo-note .memo-toggle summary {
+  padding: 0 2px;
+}
+
+.memo-form {
+  display: none;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.score-row:has(.memo-toggle[open]) .memo-form {
+  display: flex;
+}
+
+.memo-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 16px; /* 16px 미만이면 아이폰이 확대함 */
+}
+
+/* 악보 업로드 때 적은 메모 */
+.note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.songform-edit[open] {
+  order: 2;
+  flex-basis: 100%;
 }
 
 .item-row:last-child {

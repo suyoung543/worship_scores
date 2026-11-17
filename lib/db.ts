@@ -1,7 +1,7 @@
 import "server-only";
 import { supabaseAdmin, SCORES_BUCKET } from "@/lib/supabaseAdmin";
 import type { SessionMember } from "@/lib/auth";
-import { normalizeKey } from "@/lib/format";
+import { keyWithVersion, normalizeKey, splitKey } from "@/lib/format";
 
 const SIGNED_URL_TTL = 60 * 60; // 1시간
 
@@ -32,9 +32,15 @@ export interface VersionWithPages extends ScoreVersionRow {
 export interface Song {
   id: string;
   title: string;
+  created_at: string;
+}
+
+/** 곡의 버전별 정보. name = "" 은 기본 버전. */
+export interface SongVariant {
+  song_id: string;
+  name: string;
   youtube_url: string | null;
   youtube_label: string | null;
-  created_at: string;
 }
 
 export interface Service {
@@ -136,7 +142,7 @@ export async function getService(id: string): Promise<Service | null> {
 export async function listServiceItems(serviceId: string): Promise<ServiceItem[]> {
   const { data, error } = await supabaseAdmin
     .from("service_items")
-    .select("id, service_id, song_id, key, position, memo, song:songs(id, title, youtube_url, youtube_label, created_at)")
+    .select("id, service_id, song_id, key, position, memo, song:songs(id, title, created_at)")
     .eq("service_id", serviceId)
     .order("position", { ascending: true });
   if (error) throw new Error(error.message);
@@ -192,6 +198,11 @@ export async function addServiceItem(input: {
   if (error) throw new Error(error.message);
 }
 
+export async function updateServiceItemMemo(itemId: string, memo: string | null): Promise<void> {
+  const { error } = await supabaseAdmin.from("service_items").update({ memo }).eq("id", itemId);
+  if (error) throw new Error(error.message);
+}
+
 export async function removeServiceItem(itemId: string): Promise<void> {
   const { error } = await supabaseAdmin.from("service_items").delete().eq("id", itemId);
   if (error) throw new Error(error.message);
@@ -220,7 +231,7 @@ export async function moveServiceItem(serviceId: string, itemId: string, directi
 // ---------- 곡 ----------
 
 export async function listSongs(query?: string): Promise<Song[]> {
-  let q = supabaseAdmin.from("songs").select("id, title, youtube_url, youtube_label, created_at").order("title");
+  let q = supabaseAdmin.from("songs").select("id, title, created_at").order("title");
   if (query && query.trim()) {
     q = q.ilike("title", `%${query.trim()}%`);
   }
@@ -232,35 +243,134 @@ export async function listSongs(query?: string): Promise<Song[]> {
 export async function getSong(id: string): Promise<Song | null> {
   const { data, error } = await supabaseAdmin
     .from("songs")
-    .select("id, title, youtube_url, youtube_label, created_at")
+    .select("id, title, created_at")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data;
 }
 
-export async function createSong(input: {
-  title: string;
-  youtubeUrl: string | null;
-  youtubeLabel?: string | null;
-}): Promise<string> {
+export async function createSong(input: { title: string }): Promise<string> {
   const { data, error } = await supabaseAdmin
     .from("songs")
-    .insert({ title: input.title, youtube_url: input.youtubeUrl, youtube_label: input.youtubeLabel ?? null })
+    .insert({ title: input.title })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
   return data.id;
 }
 
-export async function updateSong(
-  id: string,
-  input: { title: string; youtubeUrl: string | null; youtubeLabel: string | null }
-): Promise<void> {
-  const { error } = await supabaseAdmin
-    .from("songs")
-    .update({ title: input.title, youtube_url: input.youtubeUrl, youtube_label: input.youtubeLabel })
-    .eq("id", id);
+export async function updateSong(id: string, input: { title: string }): Promise<void> {
+  const { error } = await supabaseAdmin.from("songs").update({ title: input.title }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function listSongVariants(songIds: string[]): Promise<SongVariant[]> {
+  if (songIds.length === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from("song_variants")
+    .select("song_id, name, youtube_url, youtube_label")
+    .in("song_id", songIds)
+    .order("name");
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+/**
+ * 곡의 버전 이름을 바꿉니다. 버전은 키 뒤 괄호로 저장되므로 그 곡의 악보 키와 콘티 키를 모두 고쳐 씁니다
+ * (예: "E(예람)" → "E(어노인팅)"). 바꿀 이름이 이미 있으면 false (같은 키 악보가 겹칠 수 있어 합치지 않음).
+ */
+export async function renameSongVariant(songId: string, oldName: string, newName: string): Promise<boolean> {
+  const [{ data: versions, error: e1 }, { data: items, error: e2 }, variants] = await Promise.all([
+    supabaseAdmin.from("score_versions").select("id, key").eq("song_id", songId),
+    supabaseAdmin.from("service_items").select("id, key").eq("song_id", songId),
+    listSongVariants([songId]),
+  ]);
+  if (e1) throw new Error(e1.message);
+  if (e2) throw new Error(e2.message);
+
+  const taken = new Set([...(versions ?? []).map((v) => splitKey(v.key).version), ...variants.map((v) => v.name)]);
+  if (taken.has(newName)) return false;
+
+  const rename = (rows: { id: string; key: string }[] | null) =>
+    (rows ?? [])
+      .filter((r) => splitKey(r.key).version === oldName)
+      .map((r) => ({ id: r.id, key: keyWithVersion(splitKey(r.key).base, newName) }));
+
+  // ponytail: 행마다 따로 update — 곡 하나의 악보/콘티 수라 몇 건 안 됨.
+  for (const r of rename(versions)) {
+    const { error } = await supabaseAdmin.from("score_versions").update({ key: r.key }).eq("id", r.id);
+    if (error) throw new Error(error.message);
+  }
+  for (const r of rename(items)) {
+    const { error } = await supabaseAdmin.from("service_items").update({ key: r.key }).eq("id", r.id);
+    if (error) throw new Error(error.message);
+  }
+  const { error } = await supabaseAdmin.from("song_variants").update({ name: newName }).eq("song_id", songId).eq("name", oldName);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+/** 곡을 지웁니다 (악보·이미지·버전 정보까지). 콘티에 들어가 있으면 지우지 않고 false. */
+export async function deleteSong(songId: string): Promise<boolean> {
+  const { count, error } = await supabaseAdmin
+    .from("service_items")
+    .select("id", { count: "exact", head: true })
+    .eq("song_id", songId);
+  if (error) throw new Error(error.message);
+  if ((count ?? 0) > 0) return false;
+
+  const { data: versions, error: vErr } = await supabaseAdmin.from("score_versions").select("id").eq("song_id", songId);
+  if (vErr) throw new Error(vErr.message);
+  for (const v of versions ?? []) await deleteScoreVersion(v.id); // 이미지 파일까지 정리
+
+  const { error: delErr } = await supabaseAdmin.from("songs").delete().eq("id", songId); // song_variants는 cascade
+  if (delErr) throw new Error(delErr.message);
+  return true;
+}
+
+/** 악보 한 벌(원본 또는 수정본)을 지웁니다: DB 행(페이지는 cascade) + Storage 폴더의 이미지 전부(A4·원본). */
+export async function deleteScoreVersion(versionId: string): Promise<string | null> {
+  const { data: version, error } = await supabaseAdmin
+    .from("score_versions")
+    .select("song_id")
+    .eq("id", versionId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!version) return null;
+
+  // 폴더는 페이지의 실제 저장 경로에서 구합니다. 곡을 합치면 악보의 곡 ID가 바뀌어도 파일은 예전 곡 폴더에 남아 있기 때문.
+  const { data: pages } = await supabaseAdmin.from("score_pages").select("storage_path").eq("version_id", versionId);
+  const folders = new Set((pages ?? []).map((pg) => pg.storage_path.slice(0, pg.storage_path.lastIndexOf("/"))));
+  folders.add(`${version.song_id}/${versionId}`);
+  const paths: string[] = [];
+  for (const folder of folders) {
+    const { data: files } = await supabaseAdmin.storage.from(SCORES_BUCKET).list(folder);
+    for (const f of files ?? []) paths.push(`${folder}/${f.name}`);
+  }
+
+  const { error: delErr } = await supabaseAdmin.from("score_versions").delete().eq("id", versionId);
+  if (delErr) throw new Error(delErr.message);
+
+  if (paths.length > 0) {
+    try {
+      await supabaseAdmin.storage.from(SCORES_BUCKET).remove(paths);
+    } catch {
+      // 정리 실패는 무시 (고아 파일만 남고 화면에는 영향 없음)
+    }
+  }
+  return version.song_id;
+}
+
+/**
+ * 버전의 유튜브 링크를 저장합니다. 비우면 행을 지웁니다.
+ * youtube_label(팀명)은 예전 데이터용입니다 — 이제는 버전 이름이 팀명 역할을 하므로 저장할 때 비웁니다.
+ */
+export async function saveSongVariant(songId: string, name: string, youtubeUrl: string | null): Promise<void> {
+  const table = supabaseAdmin.from("song_variants");
+  const { error } = youtubeUrl
+    ? await table.upsert({ song_id: songId, name, youtube_url: youtubeUrl, youtube_label: null })
+    : await table.delete().eq("song_id", songId).eq("name", name);
   if (error) throw new Error(error.message);
 }
 
@@ -271,6 +381,7 @@ export interface SongKeyInfo {
 
 export interface SongWithScoreInfo extends Song {
   keys: SongKeyInfo[];
+  variants: SongVariant[];
 }
 
 /** 곡 목록 + 각 곡이 가진 키들, 키별로 (아무 세션이든) 수정본이 있는지 여부. */
@@ -279,11 +390,10 @@ export async function listSongsWithScoreInfo(query?: string): Promise<SongWithSc
   if (songs.length === 0) return [];
 
   const songIds = songs.map((s) => s.id);
-  const { data, error } = await supabaseAdmin
-    .from("score_versions")
-    .select("song_id, key, kind")
-    .in("song_id", songIds)
-    .order("key");
+  const [{ data, error }, variants] = await Promise.all([
+    supabaseAdmin.from("score_versions").select("song_id, key, kind").in("song_id", songIds).order("key"),
+    listSongVariants(songIds),
+  ]);
   if (error) throw new Error(error.message);
 
   const keysBySong = new Map<string, Map<string, SongKeyInfo>>();
@@ -302,6 +412,7 @@ export async function listSongsWithScoreInfo(query?: string): Promise<SongWithSc
   return songs.map((song) => ({
     ...song,
     keys: Array.from(keysBySong.get(song.id)?.values() ?? []),
+    variants: variants.filter((v) => v.song_id === song.id),
   }));
 }
 

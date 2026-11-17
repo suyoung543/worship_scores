@@ -2,6 +2,7 @@ import Link from "next/link";
 import NavBar from "@/components/NavBar";
 import { listSongsWithScoreInfo } from "@/lib/db";
 import { createSongAction } from "@/lib/actions";
+import { displayKey, splitKey } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -21,8 +22,25 @@ export default async function SongsPage({ searchParams }: { searchParams: Promis
           </Link>
         </div>
 
+        <details className="card" style={{ marginBottom: 20 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>＋ 새 곡 등록</summary>
+          <form action={createSongAction} className="stack" style={{ marginTop: 14 }}>
+            <div className="field">
+              <label htmlFor="title">곡 제목</label>
+              <input id="title" name="title" type="text" required placeholder="예: 주 은혜임을" />
+            </div>
+            <div className="field">
+              <label htmlFor="youtubeUrl">참고 유튜브 링크 (선택)</label>
+              <input id="youtubeUrl" name="youtubeUrl" type="url" placeholder="https://youtube.com/..." />
+            </div>
+            <button type="submit" className="btn btn-primary btn-block" style={{ marginTop: 4 }}>
+              등록하기
+            </button>
+          </form>
+        </details>
+
         <form method="get" action="/songs" className="row" style={{ marginBottom: 20 }}>
-          <input type="search" name="q" placeholder="곡 제목 검색" defaultValue={q ?? ""} style={{ flex: 1, minHeight: 46, border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: "0 12px" }} />
+          <input type="search" name="q" placeholder="곡 제목 검색" defaultValue={q ?? ""} style={{ flex: 1, minWidth: 0, minHeight: 46, border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: "0 12px" }} />
           <button type="submit" className="btn btn-secondary">
             검색
           </button>
@@ -42,17 +60,20 @@ export default async function SongsPage({ searchParams }: { searchParams: Promis
                   </Link>
                   <div className="item-meta">
                     {s.keys.length === 0 && <span className="small muted">악보 없음</span>}
-                    {s.keys.map((k) => (
-                      <span key={k.key} className={`badge ${k.hasRevision ? "" : "badge-outline"}`}>
-                        {k.key}
-                        {k.hasRevision ? " ✎" : ""}
-                      </span>
-                    ))}
-                    {s.youtube_url && (
-                      <a href={s.youtube_url} target="_blank" rel="noreferrer" className="small muted yt-link">
-                        유튜브{s.youtube_label ? ` (${s.youtube_label})` : ""} ↗
-                      </a>
-                    )}
+                    {s.keys.map((k) => {
+                      // 버전 배지를 누르면 그 버전의 유튜브로 바로 이동 (링크 없으면 그냥 배지 → 곡 정보로)
+                      const url = s.variants.find((v) => v.name === splitKey(k.key).version)?.youtube_url;
+                      const className = `badge ${k.hasRevision ? "" : "badge-outline"}`;
+                      return url ? (
+                        <a key={k.key} href={url} target="_blank" rel="noreferrer" className={`${className} yt-link`}>
+                          {displayKey(k.key)} ↗
+                        </a>
+                      ) : (
+                        <span key={k.key} className={className}>
+                          {displayKey(k.key)}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -60,24 +81,6 @@ export default async function SongsPage({ searchParams }: { searchParams: Promis
           </div>
         )}
 
-        <h2 style={{ fontSize: 18, marginBottom: 12 }}>새 곡 등록</h2>
-        <form action={createSongAction} className="stack card">
-          <div className="field">
-            <label htmlFor="title">곡 제목</label>
-            <input id="title" name="title" type="text" required placeholder="예: 주 은혜임을" />
-          </div>
-          <div className="field">
-            <label htmlFor="youtubeUrl">참고 유튜브 링크 (선택)</label>
-            <input id="youtubeUrl" name="youtubeUrl" type="url" placeholder="https://youtube.com/..." />
-          </div>
-          <div className="field">
-            <label htmlFor="youtubeLabel">어느 팀 버전인지 (선택)</label>
-            <input id="youtubeLabel" name="youtubeLabel" type="text" placeholder="예: 마커스 워십, 예람" />
-          </div>
-          <button type="submit" className="btn btn-primary btn-block" style={{ marginTop: 4 }}>
-            등록하기
-          </button>
-        </form>
       </div>
     </>
   );

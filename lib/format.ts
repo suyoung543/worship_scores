@@ -2,8 +2,31 @@ const WEEKDAY_FMT = new Intl.DateTimeFormat("ko-KR", { weekday: "short", timeZon
 
 /** 키 표기 흔들림(공백, 유니코드 ♭/♯, 첫 글자 소문자)을 통일합니다. 콘티의 키와 악보의 키가 사소한 표기 차이로 어긋나지 않게 하기 위함. */
 export function normalizeKey(key: string): string {
-  const cleaned = key.normalize("NFKC").replace(/\s+/g, "").replace(/♭/g, "b").replace(/♯/g, "#");
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  // 버전 이름(괄호 안)은 띄어쓰기를 살리고 앞뒤 공백·연속 공백만 정리합니다. 키 부분만 공백을 모두 지웁니다.
+  const nfkc = key.normalize("NFKC");
+  const m = nfkc.match(/^([^(]*)\((.*)\)\s*$/);
+  const base = (m ? m[1] : nfkc).replace(/\s+/g, "").replace(/♭/g, "b").replace(/♯/g, "#");
+  const head = base.charAt(0).toUpperCase() + base.slice(1);
+  const version = m ? m[2].trim().replace(/\s+/g, " ") : "";
+  return version ? `${head}(${version})` : head;
+}
+
+/** 같은 키의 다른 버전 악보는 키 뒤에 "(버전)"을 붙여 별도의 키로 취급합니다. 예: D + 예람 → "D(예람)" */
+export function keyWithVersion(key: string, version: string): string {
+  const v = version.trim();
+  return normalizeKey(v ? `${key.trim()}(${v})` : key);
+}
+
+/** keyWithVersion의 반대: "D(예람)" → { base: "D", version: "예람" }, "D" → { base: "D", version: "" } */
+export function splitKey(key: string): { base: string; version: string } {
+  const m = key.match(/^(.+?)\((.+)\)$/);
+  return m ? { base: m[1], version: m[2] } : { base: key, version: "" };
+}
+
+/** 화면 표시용: "D(예람)" → "D · 예람" */
+export function displayKey(key: string): string {
+  const { base, version } = splitKey(key);
+  return version ? `${base} · ${version}` : base;
 }
 
 /** "2026-09-27" 같은 date 문자열을 "2026년 9월 27일 (일)" 형태로. 시간대 영향을 받지 않도록 UTC로 고정해 포맷합니다. */

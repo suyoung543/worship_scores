@@ -1,33 +1,32 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { filesToA4Pages } from "@/lib/convert";
-import { uploadScoreVersionAction } from "@/lib/actions";
+import { filesToA4Pages, uploadScorePages } from "@/lib/convert";
+import { keyWithVersion } from "@/lib/format";
+import VersionInput, { canonicalVersion } from "@/components/VersionInput";
 import ScoreTypeSelect, { appendScoreType, type ScoreType } from "@/components/ScoreTypeSelect";
 
 type Status = "idle" | "converting" | "uploading" | "done" | "error";
 
 export default function UploadForm({
   songId,
-  kind,
-  fixedKey,
+  versions = [],
 }: {
   songId: string;
-  kind: "original" | "revision";
-  /** 키가 이미 정해져 있으면 전달 (수정 업로드). 없으면 새 키를 직접 입력받습니다. */
-  fixedKey?: string;
+  /** 이 곡에 이미 있는 버전 이름들 (버전 입력 시 추천). 같은 버전·키·종류로 올리면 기존 악보가 교체됩니다. */
+  versions?: string[];
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [memo, setMemo] = useState("");
   const [keyInput, setKeyInput] = useState("");
+  const [versionInput, setVersionInput] = useState("");
   const [typeChoice, setTypeChoice] = useState<ScoreType>("original");
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  const effectiveKey = fixedKey ?? keyInput.trim();
-  const effectiveKind = fixedKey ? kind : typeChoice === "original" ? "original" : "revision";
+  const effectiveKey = keyInput.trim() ? keyWithVersion(keyInput, canonicalVersion(versionInput, versions)) : "";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,19 +49,18 @@ export default function UploadForm({
       const formData = new FormData();
       formData.set("songId", songId);
       formData.set("key", effectiveKey);
-      if (fixedKey) formData.set("kind", kind);
-      else appendScoreType(formData, typeChoice);
+      appendScoreType(formData, typeChoice);
       formData.set("memo", memo);
-      pages.forEach((blob, i) => formData.append("pages", blob, `page-${i + 1}.jpg`));
 
       setStatus("uploading");
       startTransition(() => {
-        uploadScoreVersionAction(formData)
+        uploadScorePages(formData, pages)
           .then(() => {
             setStatus("done");
             setFiles([]);
             setMemo("");
             setKeyInput("");
+            setVersionInput("");
           })
           .catch((err: unknown) => {
             setStatus("error");
@@ -79,23 +77,20 @@ export default function UploadForm({
 
   return (
     <form onSubmit={handleSubmit} className="stack" style={{ paddingTop: 12 }}>
-      {!fixedKey && (
-        <>
-          <div className="field">
-            <label>키</label>
-            <input
-              type="text"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              placeholder="예: D, Eb, G#m"
-            />
-          </div>
-          <div className="field">
-            <label>어떤 악보인가요?</label>
-            <ScoreTypeSelect value={typeChoice} onChange={setTypeChoice} />
-          </div>
-        </>
-      )}
+      <div className="version-key-row">
+        <div className="field">
+          <label>버전 (선택)</label>
+          <VersionInput value={versionInput} onChange={setVersionInput} options={versions} />
+        </div>
+        <div className="field">
+          <label>키</label>
+          <input type="text" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} placeholder="예: D" />
+        </div>
+      </div>
+      <div className="field">
+        <label>어떤 악보인가요?</label>
+        <ScoreTypeSelect value={typeChoice} onChange={setTypeChoice} />
+      </div>
 
       <div className="field">
         <label>파일 선택 (PDF 또는 이미지, 여러 장 가능)</label>
@@ -107,17 +102,15 @@ export default function UploadForm({
         />
       </div>
 
-      {effectiveKind === "revision" && (
-        <div className="field">
-          <label>메모 (선택)</label>
-          <input
-            type="text"
-            value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-            placeholder="예: 브릿지 코드 수정"
-          />
-        </div>
-      )}
+      <div className="field">
+        <label>메모 (선택)</label>
+        <input
+          type="text"
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder="예: 브릿지 코드 수정"
+        />
+      </div>
 
       {files.length > 0 && status === "idle" && <p className="small muted">{files.length}개 파일 선택됨</p>}
       {status === "converting" && <p className="upload-progress">변환 중... {progress}장 완료</p>}

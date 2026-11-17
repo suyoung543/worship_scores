@@ -12,12 +12,14 @@ export default function ScoreViewer({
   subtitle,
   pages,
   pdfHref,
+  memo,
   onClose,
 }: {
   title: string;
   subtitle?: string;
   pages: ScoreViewerPage[];
   pdfHref?: string;
+  memo?: string | null;
   onClose: () => void;
 }) {
   const [index, setIndex] = useState(0);
@@ -40,6 +42,7 @@ export default function ScoreViewer({
         <div>
           <div style={{ fontWeight: 600 }}>{title}</div>
           {subtitle && <div className="small" style={{ opacity: 0.75 }}>{subtitle}</div>}
+          {memo && <div className="small" style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>메모: {memo}</div>}
         </div>
         <button
           type="button"

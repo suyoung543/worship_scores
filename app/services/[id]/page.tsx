@@ -4,10 +4,10 @@ import NavBar from "@/components/NavBar";
 import ViewScoreButton from "@/components/ViewScoreButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import AddServiceItemForm from "@/components/AddServiceItemForm";
-import { getScoreSummary, getService, listServiceItems, listSongs, type VersionWithPages } from "@/lib/db";
+import { getScoreSummary, getService, listServiceItems, listSongVariants, listSongsWithScoreInfo, type VersionWithPages } from "@/lib/db";
 import { getSessionMember, SESSION_LABELS, SESSION_MEMBERS } from "@/lib/auth";
-import { formatServiceDate } from "@/lib/format";
-import { deleteServiceAction, moveServiceItemAction, removeServiceItemAction, updateServiceAction } from "@/lib/actions";
+import { displayKey, formatServiceDate, splitKey } from "@/lib/format";
+import { deleteServiceAction, moveServiceItemAction, removeServiceItemAction, updateServiceAction, updateServiceItemMemoAction } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -23,11 +23,12 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
   const [service, items, songs, member] = await Promise.all([
     getService(id),
     listServiceItems(id),
-    listSongs(),
+    listSongsWithScoreInfo(),
     getSessionMember(),
   ]);
 
   if (!service || !member) notFound();
+  const variants = await listSongVariants(Array.from(new Set(items.map((i) => i.song_id))));
 
   const itemsWithVersion = await Promise.all(
     items.map(async (item) => {
@@ -47,7 +48,10 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
       // 나머지는 악보가 없어도("악보 없음") 그대로 보여줍니다.
       const otherVersions = slots.filter((s) => s.version === null || s.version.id !== version?.id);
 
-      return { item, version, otherVersions };
+      // 콘티에 넣은 버전(키 뒤 괄호)의 유튜브 정보
+      const variant = variants.find((v) => v.song_id === item.song_id && v.name === splitKey(item.key).version) ?? null;
+
+      return { item, version, otherVersions, variant };
     })
   );
 
@@ -55,11 +59,16 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
     <>
       <NavBar active="services" />
       <div className="page">
-        <div className="between" style={{ alignItems: "flex-start", marginBottom: 4 }}>
+        <div className="between service-head" style={{ alignItems: "flex-start", marginBottom: 16 }}>
           <div>
             <h1 style={{ fontSize: 22 }}>{formatServiceDate(service.service_date)}</h1>
             {service.title && <p className="muted" style={{ marginTop: 4 }}>{service.title}</p>}
           </div>
+          <div className="row" style={{ gap: 8, flexShrink: 0 }}>
+          {/* 펼치면 아래 .service-edit-form 이 보입니다 (CSS :has). 버튼 자리는 그대로 유지됩니다. */}
+          <details className="service-edit-toggle">
+            <summary>수정</summary>
+          </details>
           <form action={deleteServiceAction}>
             <input type="hidden" name="serviceId" value={service.id} />
             <ConfirmSubmitButton confirmMessage="이 예배 콘티를 삭제할까요? 곡 목록만 지워지고 악보 자체는 남아있어요." className="btn-danger-text">
@@ -67,26 +76,22 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
             </ConfirmSubmitButton>
           </form>
         </div>
+      </div>
 
-        <details style={{ marginBottom: 16 }}>
-          <summary className="small" style={{ cursor: "pointer", color: "var(--ink-soft)" }}>
-            날짜/제목 수정
-          </summary>
-          <form action={updateServiceAction} className="stack card" style={{ marginTop: 10 }}>
-            <input type="hidden" name="serviceId" value={service.id} />
-            <div className="field">
-              <label htmlFor="serviceDate">날짜</label>
-              <input id="serviceDate" name="serviceDate" type="date" defaultValue={service.service_date} required />
-            </div>
-            <div className="field">
-              <label htmlFor="title">제목 (선택)</label>
-              <input id="title" name="title" type="text" defaultValue={service.title ?? ""} placeholder="예: 주일 2부 예배" />
-            </div>
-            <button type="submit" className="btn btn-secondary" style={{ alignSelf: "flex-start" }}>
-              저장
-            </button>
-          </form>
-        </details>
+        <form action={updateServiceAction} className="stack card service-edit-form" style={{ marginBottom: 16 }}>
+          <input type="hidden" name="serviceId" value={service.id} />
+          <div className="field">
+            <label htmlFor="serviceDate">날짜</label>
+            <input id="serviceDate" name="serviceDate" type="date" defaultValue={service.service_date} required />
+          </div>
+          <div className="field">
+            <label htmlFor="title">제목 (선택)</label>
+            <input id="title" name="title" type="text" defaultValue={service.title ?? ""} placeholder="예: 주일 2부 예배" />
+          </div>
+          <button type="submit" className="btn btn-secondary" style={{ alignSelf: "flex-start" }}>
+            저장
+          </button>
+        </form>
 
         <div className="stack" style={{ marginBottom: 20, gap: 10 }}>
           <div className="row">
@@ -95,7 +100,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
               className="btn btn-accent"
               style={{ minHeight: 40, padding: "0 16px", fontSize: 14 }}
             >
-              콘티 PDF 받기 (내 세션: {SESSION_LABELS[member]})
+              내 세션 PDF 받기
             </a>
           </div>
           <div className="row" style={{ flexWrap: "wrap" }}>
@@ -117,52 +122,60 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
           </div>
         ) : (
           <div className="card" style={{ marginBottom: 24, padding: "4px 18px" }}>
-            {itemsWithVersion.map(({ item, version, otherVersions }, i) => {
+            {itemsWithVersion.map(({ item, version, otherVersions, variant }, i) => {
               const label = versionLabel(version);
               const thumb = version?.pages[0]?.url;
               return (
                 <div className="item-row" key={item.id}>
-                  <div className="item-position">{i + 1}</div>
-
-                  <div>
-                    <Link href={`/songs/${item.song_id}`} className="list-title" style={{ fontSize: 17 }}>
-                      {item.song.title}
-                    </Link>
-                    <div className="item-meta">
-                      <span className="badge">{item.key}</span>
-                      <span className={`badge ${version ? "badge-outline" : ""}`}>{label.text}</span>
-                      {item.song.youtube_url && (
-                        <a href={item.song.youtube_url} target="_blank" rel="noreferrer" className="small">
-                          유튜브{item.song.youtube_label ? ` (${item.song.youtube_label})` : ""} ↗
-                        </a>
+                  <div className="item-head">
+                    <div className="item-position">{i + 1}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <Link href={`/songs/${item.song_id}`} className="list-title" style={{ fontSize: 17 }}>
+                        {item.song.title}
+                      </Link>
+                      <div className="item-meta">
+                        <span className="badge">{displayKey(item.key)}</span>
+                        <span className={`badge ${version ? "badge-outline" : ""}`}>{label.text}</span>
+                        {variant?.youtube_url && (
+                          <a href={variant.youtube_url} target="_blank" rel="noreferrer" className="small">
+                            유튜브{variant.name || variant.youtube_label ? ` (${variant.name || variant.youtube_label})` : ""} ↗
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div className="item-actions">
+                      {thumb && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={thumb} alt="" className="thumb" />
                       )}
+                      <ViewScoreButton
+                        label="보기"
+                        className="btn btn-secondary"
+                        title={item.song.title}
+                        subtitle={`${displayKey(item.key)} · ${label.text}`}
+                        pages={version?.pages ?? []}
+                        pdfHref={version ? `/api/scores/${version.id}/pdf` : undefined}
+                      />
                     </div>
                   </div>
 
-                  <div className="item-actions">
-                    {thumb && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={thumb} alt="" className="thumb" />
-                    )}
-                    <ViewScoreButton
-                      label="보기"
-                      className="btn btn-secondary"
-                      title={item.song.title}
-                      subtitle={`${item.key}키 · ${label.text}`}
-                      pages={version?.pages ?? []}
-                      pdfHref={version ? `/api/scores/${version.id}/pdf` : undefined}
-                    />
-                  </div>
+                  {item.memo && (
+                    <div className="item-section">
+                      <div className="item-section-title">송폼</div>
+                      <p className="song-form">{item.memo}</p>
+                    </div>
+                  )}
 
                   {otherVersions.length > 0 && (
-                    <div className="item-actions" style={{ gridColumn: "1 / -1", flexWrap: "wrap" }}>
+                    <div className="item-section">
+                      <div className="item-section-title">다른 악보</div>
                       {otherVersions.map((ov) => (
-                        <div key={ov.key} className="row" style={{ gap: 6 }}>
-                          <span className="small muted">{ov.label}</span>
+                        <div key={ov.key} className="version-line">
+                          <span className="small">{ov.label}</span>
                           <ViewScoreButton
                             className="btn btn-secondary btn-sm"
                             title={item.song.title}
-                            subtitle={`${item.key}키 · ${ov.label}`}
+                            subtitle={`${displayKey(item.key)} · ${ov.label}`}
                             pages={ov.version?.pages ?? []}
                             pdfHref={ov.version ? `/api/scores/${ov.version.id}/pdf` : undefined}
                           />
@@ -171,30 +184,46 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
                     </div>
                   )}
 
-                  <div className="item-actions" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
-                    <form action={moveServiceItemAction}>
-                      <input type="hidden" name="serviceId" value={service.id} />
-                      <input type="hidden" name="itemId" value={item.id} />
-                      <input type="hidden" name="direction" value="up" />
-                      <button type="submit" className="btn-icon" disabled={i === 0} aria-label="위로">
-                        ↑
-                      </button>
-                    </form>
-                    <form action={moveServiceItemAction}>
-                      <input type="hidden" name="serviceId" value={service.id} />
-                      <input type="hidden" name="itemId" value={item.id} />
-                      <input type="hidden" name="direction" value="down" />
-                      <button type="submit" className="btn-icon" disabled={i === itemsWithVersion.length - 1} aria-label="아래로">
-                        ↓
-                      </button>
-                    </form>
-                    <form action={removeServiceItemAction}>
-                      <input type="hidden" name="serviceId" value={service.id} />
-                      <input type="hidden" name="itemId" value={item.id} />
-                      <ConfirmSubmitButton confirmMessage="콘티에서 이 곡을 뺄까요?" className="btn-danger-text">
-                        빼기
-                      </ConfirmSubmitButton>
-                    </form>
+                  <div className="item-section item-footer">
+                    {/* 저장 후 송폼 값이 바뀌면 key가 바뀌어 새로 그려지므로 접힌 상태로 돌아갑니다. */}
+                    <details className="songform-edit" key={item.memo ?? ""}>
+                      <summary>{item.memo ? "✎ 송폼 수정" : "✎ 송폼 적기"}</summary>
+                      <form action={updateServiceItemMemoAction} className="stack" style={{ marginTop: 8, gap: 8 }}>
+                        <input type="hidden" name="serviceId" value={service.id} />
+                        <input type="hidden" name="itemId" value={item.id} />
+                        <div className="field">
+                          <textarea name="memo" rows={3} defaultValue={item.memo ?? ""} placeholder="예: I - V1 - V2 - C - V1 - C - B - C - O" />
+                        </div>
+                        <button type="submit" className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }}>
+                          저장
+                        </button>
+                      </form>
+                    </details>
+                    <div className="item-actions" style={{ marginLeft: "auto" }}>
+                      <form action={moveServiceItemAction}>
+                        <input type="hidden" name="serviceId" value={service.id} />
+                        <input type="hidden" name="itemId" value={item.id} />
+                        <input type="hidden" name="direction" value="up" />
+                        <button type="submit" className="btn-icon" disabled={i === 0} aria-label="위로">
+                          ↑
+                        </button>
+                      </form>
+                      <form action={moveServiceItemAction}>
+                        <input type="hidden" name="serviceId" value={service.id} />
+                        <input type="hidden" name="itemId" value={item.id} />
+                        <input type="hidden" name="direction" value="down" />
+                        <button type="submit" className="btn-icon" disabled={i === itemsWithVersion.length - 1} aria-label="아래로">
+                          ↓
+                        </button>
+                      </form>
+                      <form action={removeServiceItemAction}>
+                        <input type="hidden" name="serviceId" value={service.id} />
+                        <input type="hidden" name="itemId" value={item.id} />
+                        <ConfirmSubmitButton confirmMessage="콘티에서 이 곡을 뺄까요?" className="btn-danger-text">
+                          빼기
+                        </ConfirmSubmitButton>
+                      </form>
+                    </div>
                   </div>
                 </div>
               );

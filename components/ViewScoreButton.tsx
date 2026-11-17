@@ -10,6 +10,7 @@ export default function ViewScoreButton({
   subtitle,
   pages,
   pdfHref,
+  memo,
 }: {
   label?: string;
   className?: string;
@@ -17,14 +18,16 @@ export default function ViewScoreButton({
   subtitle?: string;
   pages: ScoreViewerPage[];
   pdfHref?: string;
+  memo?: string | null;
 }) {
   const [open, setOpen] = useState(false);
 
   if (pages.length === 0) {
     return (
-      <span className="badge badge-outline" style={{ minHeight: 46, alignItems: "center" }}>
+      // 같은 크기의 비활성 버튼으로 그려서, 악보가 있든 없든 같은 줄의 높이·정렬이 흔들리지 않게 합니다.
+      <button type="button" className={className} disabled style={{ opacity: 0.45, cursor: "default" }}>
         악보 없음
-      </span>
+      </button>
     );
   }
 
@@ -34,7 +37,7 @@ export default function ViewScoreButton({
         {label}
       </button>
       {open && (
-        <ScoreViewer title={title} subtitle={subtitle} pages={pages} pdfHref={pdfHref} onClose={() => setOpen(false)} />
+        <ScoreViewer title={title} subtitle={subtitle} memo={memo} pages={pages} pdfHref={pdfHref} onClose={() => setOpen(false)} />
       )}
     </>
   );
