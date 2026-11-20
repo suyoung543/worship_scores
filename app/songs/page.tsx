@@ -2,14 +2,30 @@ import Link from "next/link";
 import NavBar from "@/components/NavBar";
 import { listSongsWithScoreInfo } from "@/lib/db";
 import { createSongAction } from "@/lib/actions";
-import { displayKey, splitKey } from "@/lib/format";
+import { displayKey, looksLikeKey, normalizeKey, splitKey } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 export default async function SongsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
-  const songs = await listSongsWithScoreInfo(q);
+  const query = q?.trim() ?? "";
+
+  // 검색어 하나로: 키 모양이면 키로(버전 상관없이), 아니면 제목 + 버전으로(키 상관없이) 찾습니다.
+  // 띄어쓰기·대소문자는 무시. 악보 없이 유튜브만 있는 버전도 버전 검색에 포함.
+  const compact = (v: string) => v.replace(/\s+/g, "").toLowerCase();
+  const byKey = query !== "" && looksLikeKey(query);
+  const allSongs = await listSongsWithScoreInfo();
+  const songs = !query
+    ? allSongs
+    : allSongs.filter((s) =>
+        byKey
+          ? s.keys.some((k) => splitKey(k.key).base === normalizeKey(query))
+          : compact(s.title).includes(compact(query)) ||
+            [...s.keys.map((k) => splitKey(k.key).version), ...s.variants.map((v) => v.name)].some(
+              (v) => v && compact(v).includes(compact(query))
+            )
+      );
 
   return (
     <>
@@ -39,16 +55,21 @@ export default async function SongsPage({ searchParams }: { searchParams: Promis
           </form>
         </details>
 
-        <form method="get" action="/songs" className="row" style={{ marginBottom: 20 }}>
-          <input type="search" name="q" placeholder="곡 제목 검색" defaultValue={q ?? ""} style={{ flex: 1, minWidth: 0, minHeight: 46, border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: "0 12px" }} />
+        <form method="get" action="/songs" className="row" style={{ marginBottom: query ? 8 : 20 }}>
+          <input type="search" name="q" placeholder="제목 / 키 / 버전 검색" defaultValue={query} style={{ flex: 1, minWidth: 0, minHeight: 46, border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: "0 12px" }} />
           <button type="submit" className="btn btn-secondary">
             검색
           </button>
         </form>
+        {query && (
+          <p className="small muted" style={{ margin: "0 0 14px" }}>
+            {byKey ? `${normalizeKey(query)}키 악보가 있는 곡` : `제목·버전에 ‘${query}’ 포함`} · {songs.length}곡
+          </p>
+        )}
 
         {songs.length === 0 ? (
           <div className="empty card" style={{ marginBottom: 24 }}>
-            <div className="list-title">{q ? "검색 결과가 없어요" : "아직 등록된 곡이 없어요"}</div>
+            <div className="list-title">{query ? "검색 결과가 없어요" : "아직 등록된 곡이 없어요"}</div>
           </div>
         ) : (
           <div className="list card" style={{ marginBottom: 24 }}>

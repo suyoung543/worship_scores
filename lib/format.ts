@@ -17,6 +17,14 @@ export function keyWithVersion(key: string, version: string): string {
   return normalizeKey(v ? `${key.trim()}(${v})` : key);
 }
 
+/** 예배 종류 (콘티 제목으로 저장) */
+export const SERVICE_TYPES = ["주일예배", "수요예배", "금요예배"] as const;
+
+/** 검색어가 키 모양인지 (G, Bb, F#m, e♭ …). 곡 모음 검색에서 키 검색으로 판단할 때 씁니다. */
+export function looksLikeKey(query: string): boolean {
+  return /^[A-G](#|b)?m?$/.test(normalizeKey(query));
+}
+
 /** keyWithVersion의 반대: "D(예람)" → { base: "D", version: "예람" }, "D" → { base: "D", version: "" } */
 export function splitKey(key: string): { base: string; version: string } {
   const m = key.match(/^(.+?)\((.+)\)$/);

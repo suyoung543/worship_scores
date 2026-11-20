@@ -5,9 +5,10 @@ import ViewScoreButton from "@/components/ViewScoreButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import AddServiceItemForm from "@/components/AddServiceItemForm";
 import VersionKeyPicker from "@/components/VersionKeyPicker";
+import ServiceDateTypeFields from "@/components/ServiceDateTypeFields";
 import { getScoreSummary, getService, listServiceItems, listSongVariants, listSongsWithScoreInfo, type VersionWithPages } from "@/lib/db";
 import { getSessionMember, SESSION_LABELS, SESSION_MEMBERS } from "@/lib/auth";
-import { displayKey, formatServiceDate, splitKey } from "@/lib/format";
+import { displayKey, formatServiceDate, SERVICE_TYPES, splitKey } from "@/lib/format";
 import { deleteServiceAction, moveServiceItemAction, removeServiceItemAction, updateServiceAction, updateServiceItemKeyAction, updateServiceItemMemoAction } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
@@ -67,7 +68,8 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
           </div>
           <div className="row" style={{ gap: 8, flexShrink: 0 }}>
           {/* 펼치면 아래 .service-edit-form 이 보입니다 (CSS :has). 버튼 자리는 그대로 유지됩니다. */}
-          <details className="service-edit-toggle">
+          {/* 저장 후 날짜·예배가 바뀌면 key가 바뀌어 다시 그려지며 닫힙니다 */}
+          <details className="service-edit-toggle" key={`${service.service_date}|${service.title}`}>
             <summary>수정</summary>
           </details>
           <form action={deleteServiceAction}>
@@ -81,15 +83,11 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
 
         <form action={updateServiceAction} className="stack card service-edit-form" style={{ marginBottom: 16 }}>
           <input type="hidden" name="serviceId" value={service.id} />
-          <div className="field">
-            <label htmlFor="serviceDate">날짜</label>
-            <input id="serviceDate" name="serviceDate" type="date" defaultValue={service.service_date} required />
-          </div>
-          <div className="field">
-            <label htmlFor="title">제목 (선택)</label>
-            <input id="title" name="title" type="text" defaultValue={service.title ?? ""} placeholder="예: 주일 2부 예배" />
-          </div>
-          <button type="submit" className="btn btn-secondary" style={{ alignSelf: "flex-start" }}>
+          <ServiceDateTypeFields
+            defaultDate={service.service_date}
+            defaultType={SERVICE_TYPES.includes(service.title as (typeof SERVICE_TYPES)[number]) ? service.title : null}
+          />
+          <button type="submit" className="btn btn-primary btn-sm" style={{ alignSelf: "flex-end" }}>
             저장
           </button>
         </form>

@@ -238,6 +238,11 @@ a:focus-visible {
   color: #fff;
 }
 
+.radio-chip input:focus-visible + span {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
 /* 두 갈래 중 하나를 고르는 탭 (예: 기존 곡 / 새 곡) */
 .segmented {
   display: grid;
